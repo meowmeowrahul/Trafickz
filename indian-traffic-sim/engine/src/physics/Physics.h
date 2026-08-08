@@ -5,10 +5,12 @@
 #include "../core/AgentTypes.h"
 #include "../core/SimConfig.h"
 #include "../network/RoadGraph.h"
+#include "../obstacles/Obstacles.h"
 
 void update_physics(const std::vector<AgentState>& read_state,
                     std::vector<AgentState>& write_state,
                     const SimConfig& config,
-                    const RoadGraph& graph);
+                    const RoadGraph& graph,
+                    const ObstacleSet& obstacles);
 
 #endif

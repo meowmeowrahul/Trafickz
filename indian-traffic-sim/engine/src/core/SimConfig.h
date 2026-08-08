@@ -29,6 +29,7 @@ struct SimConfig {
     int min_route_segments = 5;
     std::vector<double> vehicle_distribution = {0.40, 0.15, 0.35, 0.10};
     std::string net_xml_path = "";
+    std::string obstacles_json_path = "";
     int ws_port = 9001;
 };
 

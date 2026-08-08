@@ -60,5 +60,29 @@ CollisionResult check_sat(const Vec2* hull_a, int size_a, const Vec2* hull_b, in
 CollisionResult check_circle_polygon(Vec2 center, double radius, const Vec2* hull, int hull_size) {
     CollisionResult result;
     result.colliding = false;
+    
+    double min_dist_sq = std::numeric_limits<double>::max();
+    Vec2 closest_point;
+    
+    for (int i = 0; i < hull_size; ++i) {
+        Vec2 a = hull[i];
+        Vec2 b = hull[(i + 1) % hull_size];
+        Vec2 edge = b - a;
+        double t = std::clamp((center - a).dot(edge) / edge.length_sq(), 0.0, 1.0);
+        Vec2 proj = a + edge * t;
+        double d_sq = Vec2::distance_sq(center, proj);
+        if (d_sq < min_dist_sq) {
+            min_dist_sq = d_sq;
+            closest_point = proj;
+        }
+    }
+    
+    double dist = std::sqrt(min_dist_sq);
+    if (dist < radius) {
+        result.colliding = true;
+        result.penetration_depth = radius - dist;
+        result.normal = (center - closest_point).normalized();
+        if (result.normal.length_sq() < 1e-9) result.normal = {0, 1};
+    }
     return result;
 }

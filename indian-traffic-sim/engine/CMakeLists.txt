@@ -45,6 +45,7 @@ add_library(engine_core
     src/network/SpatialHash.cpp
     src/network/RoadGraph.cpp
     src/collision/SAT.cpp
+    src/obstacles/Obstacles.cpp
     src/tactics/FSM.cpp
     src/physics/Physics.cpp
     src/network/WebSocketServer.cpp

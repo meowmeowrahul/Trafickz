@@ -16,8 +16,6 @@ function App() {
   const [idmT, setIdmT] = useState(1.2);
   const [sfmA, setSfmA] = useState(2.0);
 
-  const [camPos, setCamPos] = useState([500, 800, 800]);
-  const [camInput, setCamInput] = useState({ x: 500, y: 800, z: 800 });
   const [isControlsOpen, setIsControlsOpen] = useState(true);
 
   const applyControls = () => {
@@ -147,30 +145,11 @@ function App() {
                 <input type="range" min="1.0" max="10.0" step="0.5" value={sfmA} onChange={(e) => setSfmA(parseFloat(e.target.value))} style={{ width: '100%' }} />
             </div>
             <button onClick={applyControls} style={{ width: '100%', padding: '10px', background: '#007BFF', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Apply Changes</button>
-            
-            <hr style={{ margin: '20px 0', borderColor: '#444' }} />
-            
-            <h4 style={{ margin: '0 0 10px 0' }}>Camera Position</h4>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: 15 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px' }}>X</label>
-                <input type="number" value={camInput.x} onChange={e => setCamInput({...camInput, x: parseFloat(e.target.value) || 0})} style={{ width: '100%' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px' }}>Y</label>
-                <input type="number" value={camInput.y} onChange={e => setCamInput({...camInput, y: parseFloat(e.target.value) || 0})} style={{ width: '100%' }} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px' }}>Z</label>
-                <input type="number" value={camInput.z} onChange={e => setCamInput({...camInput, z: parseFloat(e.target.value) || 0})} style={{ width: '100%' }} />
-              </div>
-            </div>
-            <button onClick={() => setCamPos([camInput.x, camInput.y, camInput.z])} style={{ width: '100%', padding: '10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Move Camera</button>
           </div>
         )}
       </div>
       
-      <SimulationCanvas agents={agentsRef.current} roadData={roadData} cameraPos={camPos} />
+      <SimulationCanvas agentsRef={agentsRef} roadData={roadData} />
     </>
   );
 }

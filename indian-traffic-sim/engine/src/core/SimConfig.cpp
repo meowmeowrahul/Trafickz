@@ -42,6 +42,7 @@ SimConfig load_config(const std::string& path) {
     if (j.contains("min_route_segments")) cfg.min_route_segments = j["min_route_segments"];
     if (j.contains("vehicle_distribution")) cfg.vehicle_distribution = j["vehicle_distribution"].get<std::vector<double>>();
     if (j.contains("net_xml_path")) cfg.net_xml_path = j["net_xml_path"];
+    if (j.contains("obstacles_json_path")) cfg.obstacles_json_path = j["obstacles_json_path"];
     if (j.contains("ws_port")) cfg.ws_port = j["ws_port"];
     
     return cfg;

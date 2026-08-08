@@ -7,6 +7,7 @@
 #include <thread>
 #include <iostream>
 #include <algorithm>
+#include <unordered_set>
 #include <nlohmann/json.hpp>
 
 Engine::Engine(const SimConfig& config)
@@ -17,6 +18,12 @@ Engine::Engine(const SimConfig& config)
         net_map_ = NetXmlParser::parse(config_.net_xml_path);
     }
     road_graph_.build_from_net_map(net_map_);
+    
+    if (!config_.obstacles_json_path.empty()) {
+        obstacles_.load_from_json(config_.obstacles_json_path);
+    } else if (!road_graph_.segments.empty()) {
+        obstacles_.generate_random(road_graph_, 5, 10, rng_);
+    }
     
     nlohmann::json j_msg;
     j_msg["type"] = "road_network";
@@ -42,6 +49,28 @@ Engine::Engine(const SimConfig& config)
         }
         j_msg["junctions"].push_back(j_junc);
     }
+    
+    j_msg["barricades"] = nlohmann::json::array();
+    for (const auto& barricade : obstacles_.barricades) {
+        nlohmann::json j_b;
+        j_b["id"] = barricade.id;
+        j_b["hull"] = nlohmann::json::array();
+        for (const auto& pt : barricade.hull) {
+            j_b["hull"].push_back({pt.x, pt.y});
+        }
+        j_msg["barricades"].push_back(j_b);
+    }
+    
+    j_msg["potholes"] = nlohmann::json::array();
+    for (const auto& pothole : obstacles_.potholes) {
+        nlohmann::json j_p;
+        j_p["id"] = pothole.id;
+        j_p["center"] = {pothole.center.x, pothole.center.y};
+        j_p["radius"] = pothole.radius;
+        j_p["severity"] = pothole.severity;
+        j_msg["potholes"].push_back(j_p);
+    }
+    
     ws_server_.set_road_json(j_msg.dump());
 
     ws_server_.set_control_callback([this](int num_agents, double idm_t, double sfm_a) {
@@ -119,28 +148,22 @@ void Engine::tick() {
         state_read_[i].neighbor_indices = spatial_hash_.query_neighbors(state_read_[i].position, i, state_read_);
     }
 
-    #pragma omp parallel for schedule(static)
-    for (size_t i = 0; i < state_read_.size(); ++i) {
-        std::vector<AgentState> neighbors;
-        for (int idx : state_read_[i].neighbor_indices) {
-            neighbors.push_back(state_read_[idx]);
-        }
-        update_tactical_state(state_read_[i], neighbors, config_);
-    }
+    // Tactical state update has been moved to physics pass
 
-    update_physics(state_read_, state_write_, config_, road_graph_);
+    update_physics(state_read_, state_write_, config_, road_graph_, obstacles_);
     
+    std::unordered_set<uint64_t> evaluated_pairs;
     // Single-threaded narrow phase collision detection
     for (size_t i = 0; i < state_write_.size(); ++i) {
         auto& agent = state_write_[i];
         if (agent.hull_size < 3) continue; // skip pedestrians
         for (int n_idx : agent.neighbor_indices) {
-            if (n_idx < (int)i) {
-                auto& n_list = state_write_[n_idx].neighbor_indices;
-                if (std::find(n_list.begin(), n_list.end(), (int)i) != n_list.end()) continue;
-            } else if (n_idx == (int)i) continue;
+            if (n_idx == (int)i) continue;
             auto& neighbor = state_write_[n_idx];
             if (neighbor.hull_size < 3) continue;
+
+            uint64_t key = ((uint64_t)std::min((int)i, n_idx) << 32) | (uint64_t)std::max((int)i, n_idx);
+            if (!evaluated_pairs.insert(key).second) continue;
 
             CollisionResult res = check_sat(agent.hull.data(), agent.hull_size, neighbor.hull.data(), neighbor.hull_size);
             if (res.colliding) {
@@ -151,6 +174,34 @@ void Engine::tick() {
                 neighbor.speed *= 0.8;
                 compute_hull(agent);
                 compute_hull(neighbor);
+            }
+        }
+    }
+
+    // Vehicle-pedestrian checks (D4)
+    for (size_t i = 0; i < state_write_.size(); ++i) {
+        auto& agent = state_write_[i];
+        if (agent.hull_size == 0) continue;  // skip pedestrians as ego
+        
+        // Barricade checks
+        for (const auto& barricade : obstacles_.barricades) {
+            CollisionResult res = check_sat(agent.hull.data(), agent.hull_size, 
+                                             barricade.hull.data(), barricade.hull.size());
+            if (res.colliding) {
+                agent.position = agent.position + res.normal * (res.penetration_depth + 0.02);
+                agent.speed *= 0.3;
+                compute_hull(agent);
+            }
+        }
+        
+        for (int n_idx : agent.neighbor_indices) {
+            auto& neighbor = state_write_[n_idx];
+            if (neighbor.hull_size != 0) continue;  // only check vs pedestrians
+            double ped_radius = get_agent_profile(neighbor.type).width / 2.0;
+            auto res = check_circle_polygon(neighbor.position, ped_radius, agent.hull.data(), agent.hull_size);
+            if (res.colliding) {
+                neighbor.position = neighbor.position + res.normal * (res.penetration_depth + 0.05);
+                agent.speed *= 0.5;
             }
         }
     }

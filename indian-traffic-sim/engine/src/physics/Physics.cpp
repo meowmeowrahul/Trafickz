@@ -15,16 +15,45 @@ static double closest_point_distance_approx(const Vec2& c1, double hl1, const Ve
     return dist - hl1 - hl2;
 }
 
+static Vec2 closest_point_on_polygon(const Vec2& center, const std::vector<Vec2>& hull) {
+    double min_dist_sq = std::numeric_limits<double>::max();
+    Vec2 closest_point = center;
+    
+    int hull_size = hull.size();
+    if (hull_size == 0) return closest_point;
+    
+    for (int i = 0; i < hull_size; ++i) {
+        Vec2 a = hull[i];
+        Vec2 b = hull[(i + 1) % hull_size];
+        Vec2 edge = b - a;
+        double t = std::clamp((center - a).dot(edge) / edge.length_sq(), 0.0, 1.0);
+        Vec2 proj = a + edge * t;
+        double d_sq = Vec2::distance_sq(center, proj);
+        if (d_sq < min_dist_sq) {
+            min_dist_sq = d_sq;
+            closest_point = proj;
+        }
+    }
+    return closest_point;
+}
+
 void update_physics(const std::vector<AgentState>& read_state,
                     std::vector<AgentState>& write_state,
                     const SimConfig& config,
-                    const RoadGraph& graph) {
+                    const RoadGraph& graph,
+                    const ObstacleSet& obstacles) {
     
     #pragma omp parallel for schedule(static)
     for (size_t i = 0; i < read_state.size(); ++i) {
         const auto& ego = read_state[i];
         auto& next = write_state[i];
         next = ego; // copy previous state
+
+        std::vector<AgentState> neighbors;
+        for (int idx : ego.neighbor_indices) {
+            neighbors.push_back(read_state[idx]);
+        }
+        update_tactical_state(next, neighbors, config);
 
         const auto& profile = get_agent_profile(ego.type);
         Vec2 forward(std::cos(ego.heading), std::sin(ego.heading));
@@ -86,11 +115,11 @@ void update_physics(const std::vector<AgentState>& read_state,
             target_speed = 0.0; // Stop driving into the void
         }
         
-        if (ego.tactical_state == TacticalState::SQUEEZE_LEFT || ego.tactical_state == TacticalState::SQUEEZE_RIGHT) {
+        if (next.tactical_state == TacticalState::SQUEEZE_LEFT || next.tactical_state == TacticalState::SQUEEZE_RIGHT) {
             target_speed *= config.fsm_squeeze_speed_factor;
-        } else if (ego.tactical_state == TacticalState::TURNING) {
+        } else if (next.tactical_state == TacticalState::TURNING) {
             target_speed = std::min(target_speed, config.fsm_turn_max_speed);
-        } else if (ego.tactical_state == TacticalState::YIELD) {
+        } else if (next.tactical_state == TacticalState::YIELD) {
             target_speed = 0.0;
         }
 
@@ -130,6 +159,15 @@ void update_physics(const std::vector<AgentState>& read_state,
         } else {
             accel = max_accel * (1.0 - std::pow(ego.speed / target_speed, 4) - max_braking_term);
         }
+        
+        for (const auto& pothole : obstacles.potholes) {
+            double dist = (ego.position - pothole.center).length();
+            if (dist < pothole.radius) {
+                if (accel > 0) accel *= (1.0 - pothole.severity);
+                else accel *= (1.0 - pothole.severity);
+                target_speed *= (1.0 - pothole.severity * 0.5);
+            }
+        }
 
         Vec2 f_repulsive(0.0, 0.0);
         Vec2 f_asymmetric(0.0, 0.0);
@@ -161,23 +199,42 @@ void update_physics(const std::vector<AgentState>& read_state,
             f_goal = (dir_to_waypoint * target_speed - forward * ego.speed) * (1.0 / config.sfm_tau) * config.sfm_goal_weight;
         }
 
-        if (ego.tactical_state == TacticalState::SQUEEZE_LEFT) {
+        if (next.tactical_state == TacticalState::SQUEEZE_LEFT) {
             f_goal = f_goal - right * 2.0; 
-        } else if (ego.tactical_state == TacticalState::SQUEEZE_RIGHT) {
+        } else if (next.tactical_state == TacticalState::SQUEEZE_RIGHT) {
             f_goal = f_goal + right * 2.0; 
         }
+        
+        Vec2 f_obstacle(0.0, 0.0);
+        for (const auto& barricade : obstacles.barricades) {
+            Vec2 closest = closest_point_on_polygon(ego.position, barricade.hull);
+            double dist = (ego.position - closest).length();
+            if (dist < 8.0 && dist > 1e-3) {
+                Vec2 dir_away = (ego.position - closest).normalized();
+                double force_mag = config.sfm_A * 2.0 * std::exp(-dist / config.sfm_B);
+                force_mag = std::min(force_mag, 20.0); // cap force
+                f_obstacle = f_obstacle + dir_away * force_mag;
+            }
+        }
 
-        Vec2 f_total = f_goal + f_repulsive + f_asymmetric;
+        Vec2 f_total = f_goal + f_repulsive + f_asymmetric + f_obstacle;
 
         double desired_heading = ego.heading;
         double heading_delta = 0.0;
         if (f_total.length_sq() > 1e-6) {
             desired_heading = std::atan2(f_total.y, f_total.x);
-            heading_delta = normalize_angle(desired_heading - ego.heading) * 0.05;
+            double raw_delta = normalize_angle(desired_heading - ego.heading);
+            double gain = (ego.speed < 3.0) ? 0.15 : 0.05;
+            heading_delta = raw_delta * gain;
         }
 
         double speed_new = std::clamp(ego.speed + accel * config.dt, 0.0, profile.max_speed);
-        double steer = std::clamp(heading_delta, -profile.max_steer, profile.max_steer);
+        
+        // Adaptive gain - tighter steering authority at low speed
+        double speed_factor = 1.0 / (1.0 + ego.speed * 0.3);
+        double adaptive_steer_limit = profile.max_steer * (1.0 + speed_factor);
+        
+        double steer = std::clamp(heading_delta, -adaptive_steer_limit, adaptive_steer_limit);
         
         double theta_new = ego.heading;
         if (profile.wheelbase < 0.01) {

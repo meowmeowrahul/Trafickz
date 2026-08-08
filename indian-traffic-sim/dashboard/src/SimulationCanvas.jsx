@@ -1,93 +1,248 @@
-import React, { useRef, useMemo, useEffect } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid } from "@react-three/drei";
-import * as THREE from "three";
-import RoadMesh from "./RoadMesh";
+import React, { useRef, useEffect } from 'react';
 
-function CameraController({ position }) {
-  const { camera } = useThree();
-  useEffect(() => {
-    if (position) {
-      camera.position.set(position[0], position[1], position[2]);
-      camera.updateProjectionMatrix();
+const AGENT_COLORS = ['#00e5ff', '#ff9800', '#2196f3', '#f44336', '#9c27b0'];
+const AGENT_SIZES = [
+    [0.8, 2.0],   // TWO_WHEELER
+    [1.4, 2.6],   // AUTO
+    [1.8, 4.5],   // CAR
+    [2.5, 10.0],  // BUS
+    [0.4, 0.4],   // PEDESTRIAN
+];
+
+function resizeCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
     }
-  }, [position, camera]);
-  return null;
 }
 
-const AGENT_COLORS = [
-  new THREE.Color("cyan"), // 0: TWO_WHEELER
-  new THREE.Color("orange"), // 1: AUTO_RICKSHAW
-  new THREE.Color("blue"), // 2: CAR
-  new THREE.Color("red"), // 3: BUS
-  new THREE.Color("purple"), // 4: PEDESTRIAN
-];
+function drawRoads(ctx, roadData) {
+    if (!roadData || !roadData.edges) return;
+    
+    for (const edge of roadData.edges) {
+        if (edge.centerline.length < 2) continue;
+        
+        ctx.strokeStyle = '#333333';
+        ctx.lineWidth = edge.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(edge.centerline[0][0], edge.centerline[0][1]);
+        for (let i = 1; i < edge.centerline.length; i++) {
+            ctx.lineTo(edge.centerline[i][0], edge.centerline[i][1]);
+        }
+        ctx.stroke();
 
-const AGENT_SCALES = [
-  [0.8, 2.0, 1.0], // TWO_WHEELER (w, l, h)
-  [1.4, 2.6, 1.5], // AUTO_RICKSHAW
-  [1.8, 4.5, 1.2], // CAR
-  [2.5, 10.0, 3.0], // BUS
-  [0.5, 0.5, 1.8], // PEDESTRIAN
-];
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 0.15;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(edge.centerline[0][0], edge.centerline[0][1]);
+        for (let i = 1; i < edge.centerline.length; i++) {
+            ctx.lineTo(edge.centerline[i][0], edge.centerline[i][1]);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+}
 
-function AgentInstancedMesh({ type, agents, maxAgents = 2000 }) {
-  const meshRef = useRef();
-  const color = AGENT_COLORS[type];
-  const scale = AGENT_SCALES[type];
-  const dummy = useMemo(() => new THREE.Object3D(), []);
+function drawObstacles(ctx, roadData) {
+    if (!roadData) return;
 
-  useFrame(() => {
-    if (!meshRef.current) return;
+    if (roadData.potholes) {
+        for (const p of roadData.potholes) {
+            ctx.strokeStyle = 'rgba(255, 165, 0, 0.6)';
+            ctx.lineWidth = 0.3;
+            ctx.setLineDash([1, 1]);
+            ctx.beginPath();
+            ctx.arc(p.center[0], p.center[1], p.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = 'rgba(139, 90, 43, 0.3)';
+            ctx.fill();
+        }
+    }
 
-    let count = 0;
+    if (roadData.barricades) {
+        for (const b of roadData.barricades) {
+            ctx.fillStyle = 'rgba(255, 60, 60, 0.7)';
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 0.2;
+            ctx.beginPath();
+            ctx.moveTo(b.hull[0][0], b.hull[0][1]);
+            for (let i = 1; i < b.hull.length; i++) {
+                ctx.lineTo(b.hull[i][0], b.hull[i][1]);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+    }
+}
+
+function drawAgents(ctx, agents) {
     for (let i = 0; i < agents.length; i++) {
-      if (agents[i].type === type) {
         const a = agents[i];
-        // 2D X/Y -> 3D X/Z
-        dummy.position.set(a.x, scale[2] / 2, a.y);
-        dummy.rotation.set(0, -a.heading, 0);
-        dummy.scale.set(scale[0], scale[2], scale[1]); // width(X), height(Y), length(Z)
-        dummy.updateMatrix();
-        meshRef.current.setMatrixAt(count, dummy.matrix);
-        count++;
-      }
-    }
-    meshRef.current.count = count;
-    meshRef.current.instanceMatrix.needsUpdate = true;
-  });
+        if (!a) continue;
+        const [w, l] = AGENT_SIZES[a.type] || [1, 1];
+        const color = AGENT_COLORS[a.type] || '#ffffff';
 
-  return (
-    <instancedMesh ref={meshRef} args={[null, null, maxAgents]}>
-      <boxGeometry />
-      <meshStandardMaterial color={color} roughness={0.3} metalness={0.8} />
-    </instancedMesh>
-  );
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(a.heading); 
+
+        ctx.fillStyle = color;
+        ctx.fillRect(-l / 2, -w / 2, l, w);
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(l / 2, 0);
+        ctx.lineTo(l / 2 - 0.5, -w / 3);
+        ctx.lineTo(l / 2 - 0.5, w / 3);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.restore();
+    }
 }
 
-export default function SimulationCanvas({ agents, roadData, cameraPos }) {
-  return (
-    <Canvas camera={{ position: [500, 800, 800], fov: 45, near: 1, far: 5000 }}>
-      <CameraController position={cameraPos} />
-      <color attach="background" args={["#0a0a0f"]} />
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[100, 200, 50]} intensity={1.5} />
+export default function SimulationCanvas({ agentsRef, roadData }) {
+    const canvasRef = useRef(null);
+    const transformRef = useRef({ offsetX: 0, offsetY: 0, scale: 1.0 });
+    const isDragging = useRef(false);
+    const lastMouse = useRef({ x: 0, y: 0 });
+    const initialFitDone = useRef(false);
 
-      <Grid
-        infiniteGrid
-        fadeDistance={800}
-        sectionColor="#444"
-        cellColor="#222"
-      />
-      <RoadMesh roadData={roadData} />
+    useEffect(() => {
+        if (!roadData || !roadData.edges || roadData.edges.length === 0 || initialFitDone.current) return;
+        
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        roadData.edges.forEach(edge => {
+            edge.centerline.forEach(pt => {
+                if (pt[0] < minX) minX = pt[0];
+                if (pt[0] > maxX) maxX = pt[0];
+                if (pt[1] < minY) minY = pt[1];
+                if (pt[1] > maxY) maxY = pt[1];
+            });
+        });
+        
+        if (minX !== Infinity) {
+            const canvas = canvasRef.current;
+            const rect = canvas.getBoundingClientRect();
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const scaleX = rect.width / (width * 1.1);
+            const scaleY = rect.height / (height * 1.1);
+            const scale = Math.min(scaleX, scaleY, 20.0);
+            
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            
+            transformRef.current = {
+                offsetX: -centerX * scale,
+                offsetY: centerY * scale, // note: Y is flipped in setTransform
+                scale: scale
+            };
+            initialFitDone.current = true;
+        }
+    }, [roadData]);
 
-      <AgentInstancedMesh type={0} agents={agents} />
-      <AgentInstancedMesh type={1} agents={agents} />
-      <AgentInstancedMesh type={2} agents={agents} />
-      <AgentInstancedMesh type={3} agents={agents} />
-      <AgentInstancedMesh type={4} agents={agents} />
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        let animId;
 
-      <OrbitControls makeDefault target={[500, 0, 500]} />
-    </Canvas>
-  );
+        const render = () => {
+            resizeCanvas(canvas);
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            
+            ctx.save();
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+            ctx.restore();
+
+            const transform = transformRef.current;
+            ctx.save();
+            ctx.setTransform(
+                transform.scale * dpr, 0, 0,
+                -transform.scale * dpr, 
+                transform.offsetX * dpr + canvas.width / 2,
+                transform.offsetY * dpr + canvas.height / 2
+            );
+
+            drawRoads(ctx, roadData);
+            drawObstacles(ctx, roadData);
+            if (agentsRef.current) {
+                drawAgents(ctx, agentsRef.current);
+            }
+            
+            ctx.restore();
+            animId = requestAnimationFrame(render);
+        };
+
+        render();
+        return () => cancelAnimationFrame(animId);
+    }, [roadData]);
+
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left - rect.width / 2;
+        const mouseY = e.clientY - rect.top - rect.height / 2;
+
+        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        const transform = transformRef.current;
+        
+        let newScale = transform.scale * zoomFactor;
+        newScale = Math.max(0.1, Math.min(newScale, 20.0));
+        
+        const actualZoom = newScale / transform.scale;
+        
+        transform.offsetX = mouseX - (mouseX - transform.offsetX) * actualZoom;
+        transform.offsetY = mouseY - (mouseY - transform.offsetY) * actualZoom;
+        transform.scale = newScale;
+    };
+
+    const handleMouseDown = (e) => {
+        isDragging.current = true;
+        lastMouse.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleMouseMove = (e) => {
+        if (!isDragging.current) return;
+        const dx = e.clientX - lastMouse.current.x;
+        const dy = e.clientY - lastMouse.current.y;
+        lastMouse.current = { x: e.clientX, y: e.clientY };
+        
+        transformRef.current.offsetX += dx;
+        transformRef.current.offsetY += dy;
+    };
+
+    const handleMouseUp = () => {
+        isDragging.current = false;
+    };
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+        return () => canvas.removeEventListener('wheel', handleWheel);
+    }, []);
+
+    return (
+        <canvas 
+            ref={canvasRef} 
+            style={{ width: '100vw', height: '100vh', display: 'block', cursor: isDragging.current ? 'grabbing' : 'grab' }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+        />
+    );
 }

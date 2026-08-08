@@ -4,11 +4,13 @@
 #include "SimConfig.h"
 #include "AgentTypes.h"
 #include "../network/NetTypes.h"
-#include "../network/RoadGraph.h"
 #include "../network/SpatialHash.h"
+#include "../network/RoadGraph.h"
 #include "../network/WebSocketServer.h"
+#include "../obstacles/Obstacles.h"
 #include <vector>
 #include <atomic>
+#include <random>
 
 class Engine {
 public:
@@ -26,6 +28,7 @@ private:
     std::atomic<double> pending_sfm_A_{-1.0};
     NetMap net_map_;
     RoadGraph road_graph_;
+    ObstacleSet obstacles_;
     std::vector<AgentState> state_read_, state_write_;
     std::mt19937 rng_{42};
     SpatialHash spatial_hash_;

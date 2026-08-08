@@ -24,7 +24,7 @@ void update_tactical_state(AgentState& ego, const std::vector<AgentState>& neigh
             ego.tactical_state = TacticalState::EVALUATE_GAP;
         }
     } else if (ego.tactical_state == TacticalState::EVALUATE_GAP) {
-        bool gap_left = true;
+        bool gap_left = true, gap_right = true;
         Vec2 forward(std::cos(ego.heading), std::sin(ego.heading));
         Vec2 right = forward.perpendicular();
         
@@ -34,18 +34,16 @@ void update_tactical_state(AgentState& ego, const std::vector<AgentState>& neigh
             if (dist < 10.0) {
                 double lon = forward.dot(to_n);
                 double lat = right.dot(to_n);
-                if (lon > -2.0 && lon < 8.0 && lat < -0.5 && lat > -3.0) {
-                    gap_left = false;
-                    break;
+                if (lon > -2.0 && lon < 8.0) {
+                    if (lat < -0.5 && lat > -(profile.width + 1.5)) gap_left = false;
+                    if (lat > 0.5 && lat < (profile.width + 1.5)) gap_right = false;
                 }
             }
         }
         
-        if (gap_left) {
-            ego.tactical_state = TacticalState::SQUEEZE_LEFT; 
-        } else {
-            ego.tactical_state = TacticalState::FREE_FLOW;
-        } 
+        if (gap_left) ego.tactical_state = TacticalState::SQUEEZE_LEFT;
+        else if (gap_right) ego.tactical_state = TacticalState::SQUEEZE_RIGHT;
+        else ego.tactical_state = TacticalState::FREE_FLOW;
     } else if (ego.tactical_state == TacticalState::SQUEEZE_LEFT || ego.tactical_state == TacticalState::SQUEEZE_RIGHT) {
         ego.tactical_state = TacticalState::FREE_FLOW;
         ego.squeeze_cooldown = 1.0;

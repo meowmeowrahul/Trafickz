@@ -26,7 +26,7 @@ void compute_hull(AgentState& state) {
     double hl = profile.length / 2.0;
     
     // Simplification: position is center of the bounding box.
-    Vec2 center = state.position + forward * (profile.length / 2.0);
+    Vec2 center = state.position;
     if (state.hull_size == 4) {
         state.hull[0] = center + forward * hl + right * hw;
         state.hull[1] = center + forward * hl - right * hw;
@@ -45,7 +45,7 @@ void compute_hull(AgentState& state) {
 
 void init_agents_on_roads(std::vector<AgentState>& agents, int count, const RoadGraph& graph, std::mt19937& rng) {
     agents.resize(count);
-    std::discrete_distribution<int> dist_type({40, 15, 35, 10});
+    std::discrete_distribution<int> dist_type({30, 15, 30, 10, 15});
     std::uniform_real_distribution<double> dist_speed(2.0, 8.0);
 
     for (int i = 0; i < count; ++i) {
