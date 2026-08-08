@@ -1,0 +1,11 @@
+# Build output
+engine/build/
+build/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Map working files
+*.net.xml
+*.osm

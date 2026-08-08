@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Simulation Configuration",
+  "type": "object",
+  "properties": {
+    "dt": {
+      "type": "number",
+      "description": "Simulation tick delta time in seconds"
+    },
+    "K_neighbors": {
+      "type": "integer",
+      "description": "Number of nearest neighbors to cap in the spatial hash grid"
+    },
+    "grid_cell_size": {
+      "type": "number",
+      "description": "Spatial hash grid cell dimensions in meters"
+    },
+    "max_step_ms": {
+      "type": "number",
+      "description": "Maximum allowed execution time per step in milliseconds"
+    },
+    "road_width_trunk_m": {
+      "type": "number",
+      "description": "Physical width for trunk roads in meters"
+    },
+    "road_width_residential_m": {
+      "type": "number",
+      "description": "Physical width for residential roads in meters"
+    }
+  },
+  "required": ["dt", "K_neighbors", "grid_cell_size", "max_step_ms", "road_width_trunk_m", "road_width_residential_m"]
+}

@@ -1,0 +1,32 @@
+{
+    "dt": 0.02,
+    "target_fps": 50,
+    "num_agents": 200,
+    "world_width": 1000.0,
+    "world_height": 1000.0,
+    "K_neighbors": 16,
+    "grid_cell_size": 10.0,
+    "max_step_ms": 12.0,
+    "idm_s0": 2.0,
+    "idm_T": 1.5,
+    "idm_a": 2.5,
+    "idm_b": 4.0,
+    "idm_delta": 4.0,
+    "sfm_A": 5.0,
+    "sfm_B": 0.3,
+    "sfm_goal_weight": 1.0,
+    "sfm_asymmetric_weight": 0.5,
+    "sfm_tau": 0.5,
+    "fsm_squeeze_speed_factor": 0.7,
+    "fsm_yield_distance": 15.0,
+    "fsm_turn_max_speed": 5.0,
+    "min_route_segments": 5,
+    "vehicle_distribution": [
+        0.4,
+        0.15,
+        0.35,
+        0.1
+    ],
+    "net_xml_path": "/home/rahul/TruTraffic/indian-traffic-sim/map_pipeline/map_output/network.net.xml",
+    "ws_port": 9001
+}
