@@ -64,6 +64,15 @@ struct AgentState {
     double max_accel;
     double max_decel;
     double comfortable_decel;
+    
+    // Phase 8 output tracking
+    double current_tan_acc = 0.0;
+    double current_lat_acc = 0.0;
+    
+    // Accumulators for 1Hz averaging
+    double acc_tan_sum = 0.0;
+    double acc_lat_sum = 0.0;
+    int acc_samples = 0;
 };
 
 struct SimConfig;

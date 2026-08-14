@@ -82,7 +82,12 @@ void update_physics(const std::vector<AgentState>& read_state,
                             seg_dir = (seg.centerline[ego.waypoint_idx] - seg.centerline[ego.waypoint_idx-1]).normalized();
                         }
                     }
-                    waypoint_target = wpt + seg_dir.perpendicular() * ego.lateral_offset;
+                    
+                    double max_off = std::max(0.0, seg.width / 2.0 - profile.width / 2.0 - 0.3);
+                    if (next.lateral_offset > max_off) next.lateral_offset = max_off;
+                    if (next.lateral_offset < -max_off) next.lateral_offset = -max_off;
+                    
+                    waypoint_target = wpt + seg_dir.perpendicular() * next.lateral_offset;
                     has_waypoint = true;
 
                     bool passed = false;
@@ -108,8 +113,12 @@ void update_physics(const std::vector<AgentState>& read_state,
                                         int pick = (next.id + next.route_segment_idx) % seg.outgoing_segment_indices.size();
                                         next.route.push_back(seg.outgoing_segment_indices[pick]);
                                     }
-                                } else if (!next.route.empty()) {
-                                    next.route.push_back(next.route[0]); // Loop back to start if dead-end
+                                } else {
+                                    // Dead end reached! Despawn by setting hull_size to 0
+                                    next.hull_size = 0;
+                                    next.speed = 0.0;
+                                    has_waypoint = false;
+                                    continue;
                                 }
                             }
                             next.route_segment_idx++;
@@ -121,7 +130,15 @@ void update_physics(const std::vector<AgentState>& read_state,
         } else {
             // Route completely exhausted
             has_waypoint = true;
-            target_speed = 0.0; // Stop driving into the void
+            // Only stop if there are absolutely no outgoing edges
+            if (ego.route_segment_idx < (int)ego.route.size()) {
+                int seg_idx = ego.route[ego.route_segment_idx];
+                if (seg_idx >= 0 && seg_idx < (int)graph.segments.size() && graph.segments[seg_idx].outgoing_segment_indices.empty()) {
+                    target_speed = 0.0;
+                }
+            } else {
+                target_speed = 0.0;
+            }
         }
         
         if (next.tactical_state == TacticalState::SQUEEZE_LEFT || next.tactical_state == TacticalState::SQUEEZE_RIGHT) {
@@ -232,6 +249,17 @@ void update_physics(const std::vector<AgentState>& read_state,
 
         Vec2 f_total = f_goal + f_repulsive + f_asymmetric + f_obstacle;
 
+        // Phase 8 output tracking
+        next.current_tan_acc = std::clamp(accel, -10.0, 10.0);
+        
+        double raw_lat = f_total.dot(right);
+        if (std::isnan(raw_lat) || std::isinf(raw_lat)) raw_lat = 0.0;
+        next.current_lat_acc = std::clamp(raw_lat, -10.0, 10.0);
+        
+        next.acc_tan_sum += next.current_tan_acc;
+        next.acc_lat_sum += next.current_lat_acc;
+        next.acc_samples++;
+
         double desired_heading = ego.heading;
         double heading_delta = 0.0;
         if (f_total.length_sq() > 1e-6) {
@@ -264,7 +292,7 @@ void update_physics(const std::vector<AgentState>& read_state,
         next.position.x = ego.position.x + speed_new * std::cos(next.heading) * config.dt;
         next.position.y = ego.position.y + speed_new * std::sin(next.heading) * config.dt;
 
-        // --- Road Boundary Hard Constraint ---
+        // --- Smooth Road Boundary Constraint ---
         if (ego.route_segment_idx < (int)ego.route.size()) {
             int seg_idx = ego.route[ego.route_segment_idx];
             if (seg_idx >= 0 && seg_idx < (int)graph.segments.size()) {
@@ -282,10 +310,14 @@ void update_physics(const std::vector<AgentState>& read_state,
                         
                         Vec2 offset_vec = next.position - proj;
                         double lateral_dist = offset_vec.length();
-                        double max_offset = std::max(0.0, seg.width / 2.0 - profile.width / 2.0 - 0.1); // 0.1m safety margin
+                        double max_offset = std::max(0.0, seg.width / 2.0 - profile.width / 2.0); 
                         
                         if (lateral_dist > max_offset && lateral_dist > 1e-6) {
-                            next.position = proj + offset_vec.normalized() * max_offset;
+                            if (t >= -0.1 && t <= 1.1) {
+                                double penetration = lateral_dist - max_offset;
+                                double slide = std::min(penetration, 5.0 * config.dt);
+                                next.position = next.position - offset_vec.normalized() * slide;
+                            }
                         }
                     }
                 }

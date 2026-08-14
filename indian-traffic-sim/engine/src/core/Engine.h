@@ -58,7 +58,12 @@ private:
     // Phase 7 D2 & D3
     std::vector<SpawnEvent> spawn_schedule_;
     size_t next_spawn_idx_ = 0;
-    std::unordered_map<uint32_t, std::vector<double>> tracked_trajectories_;
+    struct TrackedTrajectory {
+        std::vector<double> speed_profile;
+        std::vector<double> tan_acc_profile;
+        std::vector<double> lat_acc_profile;
+    };
+    std::unordered_map<uint32_t, TrackedTrajectory> tracked_trajectories_;
     int congestion_failures_ = 0;
 };
 

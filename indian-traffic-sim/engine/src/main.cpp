@@ -28,6 +28,7 @@ int main(int argc, char* argv[]) {
     double car_width = -1.0;
     double car_length = -1.0;
     std::string schedule_path = "";
+    std::string net_xml_path_arg = "";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -42,6 +43,7 @@ int main(int argc, char* argv[]) {
         else if (arg == "--car_width" && i + 1 < argc) car_width = std::stod(argv[++i]);
         else if (arg == "--car_length" && i + 1 < argc) car_length = std::stod(argv[++i]);
         else if (arg == "--schedule" && i + 1 < argc) schedule_path = argv[++i];
+        else if (arg == "--net_xml" && i + 1 < argc) net_xml_path_arg = argv[++i];
         else if (arg[0] != '-') config_path = arg;
     }
 
@@ -57,6 +59,13 @@ int main(int argc, char* argv[]) {
     if (car_width > 0) config.car_width = car_width;
     if (car_length > 0) config.car_length = car_length;
     if (!schedule_path.empty()) config.schedule_json_path = schedule_path;
+    
+    // Allow overriding or explicitly clearing the net_xml_path
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--net_xml" && i + 1 < argc) {
+            config.net_xml_path = argv[i+1];
+        }
+    }
 
     if (config.headless) {
         std::cout << "[Main] Headless Mode Enabled. Target duration: " << config.duration << "s\n";

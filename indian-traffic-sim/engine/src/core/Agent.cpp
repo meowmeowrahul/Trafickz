@@ -85,8 +85,9 @@ void init_agents_on_roads(std::vector<AgentState>& agents, int count, const Road
             agents[i].heading = dist_h(rng);
             agents[i].lateral_offset = 0.0;
         } else {
-            // For calibration/testing, place agents in a uniform pattern to avoid initial crashes
-            const RoadSegment& seg = graph.segments.front();
+            std::uniform_int_distribution<int> dist_seg(0, graph.segments.size() - 1);
+            int seg_idx = dist_seg(rng);
+            const RoadSegment& seg = graph.segments[seg_idx];
             
             AgentProfile profile = get_agent_profile(agents[i].type);
             if (agents[i].type == AgentType::CAR) {
@@ -94,26 +95,24 @@ void init_agents_on_roads(std::vector<AgentState>& agents, int count, const Road
                 if (config.car_length > 0) profile.length = config.car_length;
             }
             
-            double max_offset = std::max(0.0, seg.width / 2.0 - profile.width / 2.0 - 0.3);
-            
-            agents[i].route = { 0 };
+            agents[i].route = { seg_idx };
             agents[i].route_segment_idx = 0;
             
             if (!seg.centerline.empty() && seg.centerline.size() > 1) {
                 agents[i].waypoint_idx = 1;
                 
-                // Distribute evenly along the total length
-                double spacing = seg.length / count;
-                double t = (i * spacing) / seg.length;
+                std::uniform_real_distribution<double> dist_t(0.0, 1.0);
+                double t = dist_t(rng);
                 
                 Vec2 dir = (seg.centerline[1] - seg.centerline[0]).normalized();
                 Vec2 base_pos = seg.centerline[0] + (seg.centerline[1] - seg.centerline[0]) * t;
                 
-                // Distribute laterally into discrete lanes
+                // Random lane
                 int num_lanes = std::max(1, (int)(seg.width / 3.0));
-                int lane = i % num_lanes;
-                agents[i].lateral_offset = -seg.width / 2.0 + 1.5 + lane * 3.0;
+                std::uniform_int_distribution<int> dist_lane(0, num_lanes - 1);
+                int lane = dist_lane(rng);
                 
+                agents[i].lateral_offset = -seg.width / 2.0 + 1.5 + lane * 3.0;
                 agents[i].heading = std::atan2(dir.y, dir.x);
                 agents[i].position = base_pos + dir.perpendicular() * agents[i].lateral_offset;
             } else {

@@ -21,7 +21,25 @@ function resizeCanvas(canvas) {
 }
 
 function drawRoads(ctx, roadData) {
-    if (!roadData || !roadData.edges) return;
+    if (!roadData) return;
+    
+    // Draw junctions first (or after) to fill the gaps between edges
+    if (roadData.junctions) {
+        for (const junc of roadData.junctions) {
+            if (!junc.shape || junc.shape.length < 3) continue;
+            
+            ctx.fillStyle = '#333333';
+            ctx.beginPath();
+            ctx.moveTo(junc.shape[0][0], junc.shape[0][1]);
+            for (let i = 1; i < junc.shape.length; i++) {
+                ctx.lineTo(junc.shape[i][0], junc.shape[i][1]);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+    
+    if (!roadData.edges) return;
     
     for (const edge of roadData.edges) {
         if (edge.centerline.length < 2) continue;

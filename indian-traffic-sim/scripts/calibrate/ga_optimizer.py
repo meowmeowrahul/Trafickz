@@ -28,18 +28,6 @@ CAR_LENGTH = metrics.get("car_length", 5.0)
 
 print(f"Loaded {len(target_trajs)} target trajectories for DTW. Car: {CAR_WIDTH}x{CAR_LENGTH}")
 
-def exact_dtw(s, t):
-    n, m = len(s), len(t)
-    dtw_matrix = np.full((n+1, m+1), np.inf)
-    dtw_matrix[0, 0] = 0
-    for i in range(1, n+1):
-        for j in range(1, m+1):
-            cost = abs(s[i-1] - t[j-1])
-            dtw_matrix[i, j] = cost + min(dtw_matrix[i-1, j],    # insertion
-                                          dtw_matrix[i, j-1],    # deletion
-                                          dtw_matrix[i-1, j-1])  # match
-    return dtw_matrix[n, m]
-
 def run_simulation(x):
     idm_T, idm_s0, comf_decel, sfm_A, sfm_B = x
     
@@ -48,6 +36,7 @@ def run_simulation(x):
         "--headless",
         "--duration", "60",
         "--schedule", "inflow_schedule.json",
+        "--net_xml", "",
         "--idm_T", str(idm_T),
         "--idm_s0", str(idm_s0),
         "--comf_decel", str(comf_decel),
@@ -72,28 +61,79 @@ def run_simulation(x):
         sim_trajs = data.get("trajectories", {})
         congestion_failures = data.get("congestion_failures", 0)
         
-        total_dtw_dist = 0.0
+        total_dtw = 0.0
+        total_tan_mse = 0.0
+        total_lat_mse = 0.0
         comparisons = 0
-        
-        for track_id_str, sim_t in sim_trajs.items():
-            if track_id_str in target_trajs:
-                tgt_t = target_trajs[track_id_str]
-                if len(sim_t) < 2 or len(tgt_t) < 2:
-                    continue
-                # Clean sim_t of None values (which might be NaNs exported as null)
-                sim_t = [v for v in sim_t if v is not None]
-                if len(sim_t) < 2:
-                    continue
-                distance = exact_dtw(sim_t, tgt_t)
-                total_dtw_dist += (distance / len(tgt_t))
-                comparisons += 1
-                
+
+        for track_id_str, sim_data in sim_trajs.items():
+            if track_id_str not in target_trajs:
+                continue
+            tgt_data = target_trajs[track_id_str]
+
+            # In older target files this might just be a list if not updated. Handle gracefully?
+            # We assume it's dict-like since we re-ran parse_ground_truth.
+            if isinstance(sim_data, list):
+                print("Warning: sim_data is list! Please re-run parse_ground_truth or check engine output.")
+                continue
+
+            sim_speed = [v for v in sim_data.get("speed", []) if v is not None]
+            tgt_speed = tgt_data.get("speed", [])
+            sim_tan   = [v for v in sim_data.get("tan_acc", []) if v is not None]
+            tgt_tan   = tgt_data.get("tan_acc", [])
+            sim_lat   = [v for v in sim_data.get("lat_acc", []) if v is not None]
+            tgt_lat   = tgt_data.get("lat_acc", [])
+
+            if len(sim_speed) < 2 or len(tgt_speed) < 2:
+                continue
+
+            # Term 1: DTW on speed profile (trajectory shape)
+            dtw_dist, _ = fastdtw(sim_speed, tgt_speed, radius=5,
+                                  dist=lambda a, b: abs(a - b))
+            total_dtw += dtw_dist / len(tgt_speed)
+
+            # Term 2: MSE on longitudinal acceleration (IDM fit)
+            min_len_tan = min(len(sim_tan), len(tgt_tan))
+            if min_len_tan > 3:
+                # Ignore first 3 seconds to allow rigid-box spawn collisions to untangle
+                mse_tan = np.mean([(sim_tan[i] - tgt_tan[i])**2
+                                   for i in range(3, min_len_tan)])
+                total_tan_mse += mse_tan
+            elif min_len_tan >= 2:
+                mse_tan = np.mean([(sim_tan[i] - tgt_tan[i])**2
+                                   for i in range(min_len_tan)])
+                total_tan_mse += mse_tan
+
+            # Term 3: MSE on lateral acceleration (SFM fit)
+            min_len_lat = min(len(sim_lat), len(tgt_lat))
+            if min_len_lat > 3:
+                mse_lat = np.mean([(sim_lat[i] - tgt_lat[i])**2
+                                   for i in range(3, min_len_lat)])
+                total_lat_mse += mse_lat
+            elif min_len_lat >= 2:
+                mse_lat = np.mean([(sim_lat[i] - tgt_lat[i])**2
+                                   for i in range(min_len_lat)])
+                total_lat_mse += mse_lat
+
+            comparisons += 1
+
         if comparisons == 0:
             print("Comparisons == 0, sim_trajs size:", len(sim_trajs))
             return 1e6
-            
-        avg_dtw = total_dtw_dist / comparisons
-        loss = avg_dtw + (congestion_failures * 100.0)
+
+        avg_dtw     = total_dtw / comparisons
+        avg_tan_mse = total_tan_mse / comparisons
+        avg_lat_mse = total_lat_mse / comparisons
+
+        # Weights — tuned so all terms contribute roughly equally (~3.2 each) based on baseline
+        w1, w2, w3 = 1.0, 0.066, 0.187
+        loss = w1 * avg_dtw + w2 * avg_tan_mse + w3 * avg_lat_mse
+
+        print(f"[GA] cmp={comparisons} dtw={avg_dtw:.3f} "
+              f"tan_mse={avg_tan_mse:.4f} lat_mse={avg_lat_mse:.4f} "
+              f"loss={loss:.4f} fail={congestion_failures}",
+              file=sys.stderr)
+
         return loss
         
     except subprocess.TimeoutExpired:

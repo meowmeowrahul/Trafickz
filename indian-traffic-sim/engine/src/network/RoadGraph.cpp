@@ -23,7 +23,15 @@ void RoadGraph::build_from_net_map(const NetMap& net_map) {
         seg.to_junction_id = edge.to_junction;
         
         if (!edge.lane_shapes.empty() && !edge.lane_shapes[0].empty()) {
-            seg.centerline = edge.lane_shapes[0]; 
+            const auto& first_lane = edge.lane_shapes.front();
+            const auto& last_lane = edge.lane_shapes.back();
+            std::vector<Vec2> center;
+            size_t pts = std::min(first_lane.size(), last_lane.size());
+            for (size_t i = 0; i < pts; ++i) {
+                center.push_back({(first_lane[i].x + last_lane[i].x) * 0.5, (first_lane[i].y + last_lane[i].y) * 0.5});
+            }
+            if (pts == 0) center = first_lane;
+            seg.centerline = center; 
         } else {
             auto from_it = net_map.junctions.find(seg.from_junction_id);
             auto to_it = net_map.junctions.find(seg.to_junction_id);
@@ -84,8 +92,8 @@ void RoadGraph::generate_test_grid(double size, int roads_per_side) {
     auto add_segment = [&](const std::string& id, Vec2 start, Vec2 end, std::vector<int> outs) {
         RoadSegment seg;
         seg.edge_id = id;
-        seg.width = 15.0;
-        seg.speed_limit = 20.0;
+        seg.width = 40.0; // Widen from 8.0 to 40.0 to easily fit the 28m dataset spread          
+        seg.speed_limit = 15.0;
         seg.centerline = {start, end};
         seg.length = (end - start).length();
         seg.outgoing_segment_indices = outs;
@@ -93,8 +101,10 @@ void RoadGraph::generate_test_grid(double size, int roads_per_side) {
         segments.push_back(seg);
     };
 
-    // Single 5000m straight road for dense flow calibration
-    add_segment("straight_calibration", {0, 0}, {5000, 0}, {});
+    // Forward lane (Right-to-Left). Centered at Y=0 so width 40 covers Y=-20 to Y=+20.           
+    add_segment("corridor_fwd", {200, 0}, {-100, 0}, {1});                                        
+    // Return lane (Left-to-Right). Move it far away (Y=50) so it doesn't overlap.                
+    add_segment("corridor_ret", {-100, 50}, {200, 50}, {0});
 
     std::cout << "[RoadGraph] Test loop generated with " << segments.size() << " segments.\n";
 }

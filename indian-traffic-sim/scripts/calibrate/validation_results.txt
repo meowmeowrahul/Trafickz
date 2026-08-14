@@ -1,0 +1,8 @@
+=== Validation Results ===
+Dataset: DEL_4.csv
+Comparisons: 65
+Congestion Failures: 1
+Average DTW: 11.9657
+Tan Acc MSE: 4.0153
+Lat Acc MSE: 0.1764
+Weighted Loss: 12.2153 (Weights: w1=1.0, w2=0.055, w3=0.163)

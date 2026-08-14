@@ -155,13 +155,23 @@ void Engine::run() {
                 out["congestion_failures"] = congestion_failures_;
                 nlohmann::json j_traj = nlohmann::json::object();
                 for (const auto& [id, traj] : tracked_trajectories_) {
-                    j_traj[std::to_string(id)] = traj;
+                    nlohmann::json j_agent;
+                    j_agent["speed"] = traj.speed_profile;
+                    j_agent["tan_acc"] = traj.tan_acc_profile;
+                    j_agent["lat_acc"] = traj.lat_acc_profile;
+                    j_traj[std::to_string(id)] = j_agent;
                 }
                 out["trajectories"] = j_traj;
             } else {
+                int deadlocked_count = 0;
+                for (const auto& a : state_write_) {
+                    if (a.speed < 0.1) deadlocked_count++;
+                }
                 out["flow"] = flow_rate;
                 out["avg_gap"] = avg_gap;
                 out["gaps_timeseries"] = gaps_timeseries_;
+                out["deadlocked_percent"] = (state_write_.size() > 0) ? (deadlocked_count * 100.0 / state_write_.size()) : 0.0;
+                out["deadlocked_count"] = deadlocked_count;
             }
             
             std::cout << out.dump() << "\n";
@@ -209,6 +219,26 @@ void Engine::tick() {
         }
         config_.num_agents = p_agents;
     }
+    
+    // Maintain agent count in free simulation mode
+    if (spawn_schedule_.empty() && state_read_.size() < config_.num_agents) {
+        int to_add = config_.num_agents - state_read_.size();
+        std::vector<AgentState> new_agents;
+        init_agents_on_roads(new_agents, to_add, road_graph_, rng_, config_);
+        
+        // Find highest existing ID to avoid collisions
+        int max_id = 0;
+        for (const auto& a : state_read_) {
+            if (a.id > max_id) max_id = a.id;
+        }
+        
+        int offset = max_id + 1;
+        for (auto& a : new_agents) {
+            a.id = offset++;
+            state_read_.push_back(a);
+            state_write_.push_back(a);
+        }
+    }
 
     // Dynamic Spawning for Phase 7
     if (!spawn_schedule_.empty()) {
@@ -220,7 +250,6 @@ void Engine::tick() {
             new_agent.type = ev.type;
             new_agent.position = ev.entry;
             new_agent.speed = ev.speed;
-            new_agent.heading = 0.0;
             
             int start_seg = road_graph_.get_nearest_segment(ev.entry);
             int end_seg = road_graph_.get_nearest_segment(ev.exit);
@@ -228,6 +257,18 @@ void Engine::tick() {
             new_agent.route = road_graph_.get_shortest_path(start_seg, end_seg);
             if (new_agent.route.empty()) {
                 new_agent.route.push_back(start_seg);
+            }
+            
+            // Fix D6: Initialize lateral_offset so vehicles don't all swerve to the centerline!
+            // Also Fix D7: Initialize heading to match the road direction!
+            if (!new_agent.route.empty()) {
+                const auto& start_segment = road_graph_.segments[new_agent.route[0]];
+                Vec2 seg_dir = (start_segment.centerline.back() - start_segment.centerline.front()).normalized();
+                new_agent.heading = std::atan2(seg_dir.y, seg_dir.x);
+                Vec2 to_agent = new_agent.position - start_segment.centerline.front();
+                new_agent.lateral_offset = to_agent.dot(seg_dir.perpendicular());
+            } else {
+                new_agent.heading = 0.0;
             }
             new_agent.route_segment_idx = 0;
             new_agent.current_edge_idx = new_agent.route[0];
@@ -315,8 +356,19 @@ void Engine::tick() {
     // Phase 7 D3: 1Hz Trajectory export
     if (config_.headless && !spawn_schedule_.empty()) {
         if (tick_count_ % 50 == 0) { // 1Hz tracking
-            for (const auto& a : state_write_) {
-                tracked_trajectories_[a.id].push_back(a.speed);
+            for (auto& a : state_write_) {
+                auto& traj = tracked_trajectories_[a.id];
+                traj.speed_profile.push_back(a.speed);
+                
+                double avg_tan = (a.acc_samples > 0) ? (a.acc_tan_sum / a.acc_samples) : 0.0;
+                double avg_lat = (a.acc_samples > 0) ? (a.acc_lat_sum / a.acc_samples) : 0.0;
+                traj.tan_acc_profile.push_back(avg_tan);
+                traj.lat_acc_profile.push_back(avg_lat);
+                
+                // Reset accumulators
+                a.acc_tan_sum = 0.0;
+                a.acc_lat_sum = 0.0;
+                a.acc_samples = 0;
             }
         }
     } else if (config_.headless) {
@@ -382,6 +434,14 @@ void Engine::tick() {
                 neighbor.position = neighbor.position + res.normal * (res.penetration_depth + 0.05);
                 agent.speed *= 0.5;
             }
+        }
+    }
+    
+    // Clean up despawned agents from BOTH buffers to prevent ping-pong desync
+    for (int i = (int)state_write_.size() - 1; i >= 0; --i) {
+        if (state_write_[i].hull_size == 0) {
+            state_write_.erase(state_write_.begin() + i);
+            state_read_.erase(state_read_.begin() + i);
         }
     }
 
