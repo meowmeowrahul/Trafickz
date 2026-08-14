@@ -17,10 +17,10 @@ public:
     void stop();
     void broadcast(const std::vector<AgentState>& states);
     void set_road_json(const std::string& json) { road_json_cache_ = json; }
-    void set_control_callback(std::function<void(int, double, double)> cb) { control_callback_ = cb; }
+    void set_control_callback(std::function<void(int, double, double, int, int)> cb) { control_callback_ = cb; }
 
 private:
-    std::function<void(int, double, double)> control_callback_;
+    std::function<void(int, double, double, int, int)> control_callback_;
     int port_;
     std::thread server_thread_;
     uWS::Loop* loop_ = nullptr;

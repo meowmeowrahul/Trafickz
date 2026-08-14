@@ -12,7 +12,9 @@ enum class AgentType : uint8_t {
     AUTO_RICKSHAW = 1,
     CAR           = 2,
     BUS           = 3,
-    PEDESTRIAN    = 4
+    PEDESTRIAN    = 4,
+    BICYCLE       = 5,
+    TRUCK         = 6
 };
 
 struct AgentProfile {
@@ -21,12 +23,13 @@ struct AgentProfile {
     double wheelbase;
     double max_accel;
     double max_decel;
+    double comfortable_decel;
     double max_speed;
     double max_steer;
     int hull_type; // 0=none(circle), 4=4-pt rect, 5=5-pt wedge
 };
 
-const AgentProfile& get_agent_profile(AgentType type);
+const AgentProfile get_agent_profile(AgentType type);
 
 enum class TacticalState : uint8_t {
     FREE_FLOW      = 0,
@@ -55,10 +58,17 @@ struct AgentState {
     double lateral_offset = 0.0;
     TacticalState tactical_state = TacticalState::FREE_FLOW;
     double squeeze_cooldown = 0.0;
+    
+    // Per-agent randomized capabilities
+    double max_speed;
+    double max_accel;
+    double max_decel;
+    double comfortable_decel;
 };
 
-void compute_hull(AgentState& state);
+struct SimConfig;
+void compute_hull(AgentState& state, const SimConfig& config);
 class RoadGraph;
-void init_agents_on_roads(std::vector<AgentState>& agents, int count, const RoadGraph& graph, std::mt19937& rng);
+void init_agents_on_roads(std::vector<AgentState>& agents, int count, const RoadGraph& graph, std::mt19937& rng, const SimConfig& config);
 
 #endif

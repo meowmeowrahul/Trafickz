@@ -59,9 +59,10 @@ void update_physics(const std::vector<AgentState>& read_state,
         Vec2 forward(std::cos(ego.heading), std::sin(ego.heading));
         Vec2 right = forward.perpendicular();
         
-        double max_accel = profile.max_accel;
+        double max_accel = ego.max_accel;
+        double comf_decel = (config.comf_decel > 0) ? config.comf_decel : ego.comfortable_decel;
         double max_braking_term = 0.0;
-        double target_speed = std::min(profile.max_speed, 13.89); 
+        double target_speed = ego.max_speed; 
         
         Vec2 waypoint_target = ego.position + forward * 10.0; 
         bool has_waypoint = false;
@@ -97,8 +98,16 @@ void update_physics(const std::vector<AgentState>& read_state,
                             // Safely extend route before advancing
                             if (next.route_segment_idx + 1 >= (int)next.route.size()) {
                                 if (!seg.outgoing_segment_indices.empty()) {
-                                    int pick = (next.id + next.route_segment_idx) % seg.outgoing_segment_indices.size();
-                                    next.route.push_back(seg.outgoing_segment_indices[pick]);
+                                    int dest = (next.id * 17 + next.route_segment_idx * 31) % graph.segments.size();
+                                    std::vector<int> new_path = graph.get_shortest_path(seg_idx, dest);
+                                    if (new_path.size() > 1) {
+                                        for (size_t k = 1; k < new_path.size(); ++k) {
+                                            next.route.push_back(new_path[k]);
+                                        }
+                                    } else {
+                                        int pick = (next.id + next.route_segment_idx) % seg.outgoing_segment_indices.size();
+                                        next.route.push_back(seg.outgoing_segment_indices[pick]);
+                                    }
                                 } else if (!next.route.empty()) {
                                     next.route.push_back(next.route[0]); // Loop back to start if dead-end
                                 }
@@ -145,7 +154,7 @@ void update_physics(const std::vector<AgentState>& read_state,
                     double s_ij = std::max(0.1, closest_point_distance_approx(ego.position, profile.length/2.0, neighbor.position, n_profile.length/2.0) - 0.5);
                     double delta_v = ego.speed - neighbor.speed;
                     double s_star = config.idm_s0 + ego.speed * config.idm_T + 
-                                    (ego.speed * delta_v) / (2.0 * std::sqrt(max_accel * config.idm_b));
+                                    (ego.speed * delta_v) / (2.0 * std::sqrt(max_accel * comf_decel));
                     s_star = std::max(config.idm_s0, s_star);
                     double braking_term = omega * std::pow(s_star / s_ij, 2);
                     max_braking_term = std::max(max_braking_term, braking_term);
@@ -155,17 +164,19 @@ void update_physics(const std::vector<AgentState>& read_state,
         
         double accel = 0.0;
         if (target_speed < 0.01) {
-            accel = -profile.max_decel;
+            accel = -ego.max_decel;
         } else {
             accel = max_accel * (1.0 - std::pow(ego.speed / target_speed, 4) - max_braking_term);
         }
         
-        for (const auto& pothole : obstacles.potholes) {
-            double dist = (ego.position - pothole.center).length();
-            if (dist < pothole.radius) {
-                if (accel > 0) accel *= (1.0 - pothole.severity);
-                else accel *= (1.0 - pothole.severity);
-                target_speed *= (1.0 - pothole.severity * 0.5);
+        if (config.enable_potholes) {
+            for (const auto& pothole : obstacles.potholes) {
+                double dist = (ego.position - pothole.center).length();
+                if (dist < pothole.radius) {
+                    if (accel > 0) accel *= (1.0 - pothole.severity);
+                    else accel *= (1.0 - pothole.severity);
+                    target_speed *= (1.0 - pothole.severity * 0.5);
+                }
             }
         }
 
@@ -206,14 +217,16 @@ void update_physics(const std::vector<AgentState>& read_state,
         }
         
         Vec2 f_obstacle(0.0, 0.0);
-        for (const auto& barricade : obstacles.barricades) {
-            Vec2 closest = closest_point_on_polygon(ego.position, barricade.hull);
-            double dist = (ego.position - closest).length();
-            if (dist < 8.0 && dist > 1e-3) {
-                Vec2 dir_away = (ego.position - closest).normalized();
-                double force_mag = config.sfm_A * 2.0 * std::exp(-dist / config.sfm_B);
-                force_mag = std::min(force_mag, 20.0); // cap force
-                f_obstacle = f_obstacle + dir_away * force_mag;
+        if (config.enable_barricades) {
+            for (const auto& barricade : obstacles.barricades) {
+                Vec2 closest = closest_point_on_polygon(ego.position, barricade.hull);
+                double dist = (ego.position - closest).length();
+                if (dist < 8.0 && dist > 1e-3) {
+                    Vec2 dir_away = (ego.position - closest).normalized();
+                    double force_mag = config.sfm_A * 2.0 * std::exp(-dist / config.sfm_B);
+                    force_mag = std::min(force_mag, 20.0); // cap force
+                    f_obstacle = f_obstacle + dir_away * force_mag;
+                }
             }
         }
 
@@ -228,7 +241,7 @@ void update_physics(const std::vector<AgentState>& read_state,
             heading_delta = raw_delta * gain;
         }
 
-        double speed_new = std::clamp(ego.speed + accel * config.dt, 0.0, profile.max_speed);
+        double speed_new = std::clamp(ego.speed + accel * config.dt, 0.0, ego.max_speed);
         
         // Adaptive gain - tighter steering authority at low speed
         double speed_factor = 1.0 / (1.0 + ego.speed * 0.3);
@@ -251,6 +264,34 @@ void update_physics(const std::vector<AgentState>& read_state,
         next.position.x = ego.position.x + speed_new * std::cos(next.heading) * config.dt;
         next.position.y = ego.position.y + speed_new * std::sin(next.heading) * config.dt;
 
-        compute_hull(next);
+        // --- Road Boundary Hard Constraint ---
+        if (ego.route_segment_idx < (int)ego.route.size()) {
+            int seg_idx = ego.route[ego.route_segment_idx];
+            if (seg_idx >= 0 && seg_idx < (int)graph.segments.size()) {
+                const auto& seg = graph.segments[seg_idx];
+                if (seg.centerline.size() > 1) {
+                    int wpt = std::min((int)seg.centerline.size() - 1, std::max(1, ego.waypoint_idx));
+                    Vec2 p_a = seg.centerline[wpt - 1];
+                    Vec2 p_b = seg.centerline[wpt];
+                    
+                    Vec2 edge = p_b - p_a;
+                    double edge_len_sq = edge.length_sq();
+                    if (edge_len_sq > 1e-6) {
+                        double t = (next.position - p_a).dot(edge) / edge_len_sq;
+                        Vec2 proj = p_a + edge * t;
+                        
+                        Vec2 offset_vec = next.position - proj;
+                        double lateral_dist = offset_vec.length();
+                        double max_offset = std::max(0.0, seg.width / 2.0 - profile.width / 2.0 - 0.1); // 0.1m safety margin
+                        
+                        if (lateral_dist > max_offset && lateral_dist > 1e-6) {
+                            next.position = proj + offset_vec.normalized() * max_offset;
+                        }
+                    }
+                }
+            }
+        }
+
+        compute_hull(next, config);
     }
 }

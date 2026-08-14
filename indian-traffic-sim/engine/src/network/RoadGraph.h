@@ -26,6 +26,8 @@ public:
     
     void build_from_net_map(const NetMap& net_map);
     std::vector<int> get_random_route(int start_segment, int min_segments, std::mt19937& rng) const;
+    std::vector<int> get_shortest_path(int start_segment, int end_segment) const;
+    int get_nearest_segment(const Vec2& point) const;
     void generate_test_grid(double size, int roads_per_side);
 };
 

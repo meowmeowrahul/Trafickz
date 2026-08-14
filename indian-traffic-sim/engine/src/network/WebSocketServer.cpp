@@ -35,7 +35,9 @@ void WebSocketServer::start() {
                                 int num_agents = j.value("num_agents", -1);
                                 double idm_t = j.value("idm_T", -1.0);
                                 double sfm_a = j.value("sfm_A", -1.0);
-                                this->control_callback_(num_agents, idm_t, sfm_a);
+                                int enable_barricades = j.contains("barricades_enabled") ? (j["barricades_enabled"].get<bool>() ? 1 : 0) : -1;
+                                int enable_potholes = j.contains("potholes_enabled") ? (j["potholes_enabled"].get<bool>() ? 1 : 0) : -1;
+                                this->control_callback_(num_agents, idm_t, sfm_a, enable_barricades, enable_potholes);
                             }
                         }
                     } catch (const std::exception& e) {

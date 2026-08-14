@@ -15,6 +15,8 @@ function App() {
   const [numAgents, setNumAgents] = useState(200);
   const [idmT, setIdmT] = useState(1.2);
   const [sfmA, setSfmA] = useState(2.0);
+  const [enableBarricades, setEnableBarricades] = useState(true);
+  const [enablePotholes, setEnablePotholes] = useState(true);
 
   const [isControlsOpen, setIsControlsOpen] = useState(true);
 
@@ -24,7 +26,9 @@ function App() {
             type: "control",
             num_agents: numAgents,
             idm_T: idmT,
-            sfm_A: sfmA
+            sfm_A: sfmA,
+            barricades_enabled: enableBarricades,
+            potholes_enabled: enablePotholes
         }));
     }
   };
@@ -143,6 +147,14 @@ function App() {
             <div style={{ marginBottom: 15 }}>
                 <label style={{ display: 'block', marginBottom: 5 }}>SFM Repulsion (A): {sfmA}</label>
                 <input type="range" min="1.0" max="10.0" step="0.5" value={sfmA} onChange={(e) => setSfmA(parseFloat(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div style={{ marginBottom: 15, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" id="chkBarricades" checked={enableBarricades} onChange={(e) => setEnableBarricades(e.target.checked)} />
+                <label htmlFor="chkBarricades" style={{ cursor: 'pointer' }}>Enable Barricades</label>
+            </div>
+            <div style={{ marginBottom: 15, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input type="checkbox" id="chkPotholes" checked={enablePotholes} onChange={(e) => setEnablePotholes(e.target.checked)} />
+                <label htmlFor="chkPotholes" style={{ cursor: 'pointer' }}>Enable Potholes</label>
             </div>
             <button onClick={applyControls} style={{ width: '100%', padding: '10px', background: '#007BFF', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Apply Changes</button>
           </div>

@@ -23,7 +23,8 @@ TEST(CoreTest, HullComputation) {
     state.type = AgentType::CAR; // 1.8w, 4.5l
     state.position = {0.0, 0.0};
     state.heading = 0.0;
-    compute_hull(state);
+    SimConfig config;
+    compute_hull(state, config);
     
     EXPECT_EQ(state.hull_size, 4);
     // CAR profile: length = 4.5. Center = 0.0

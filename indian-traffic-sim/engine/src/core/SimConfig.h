@@ -31,6 +31,14 @@ struct SimConfig {
     std::string net_xml_path = "";
     std::string obstacles_json_path = "";
     int ws_port = 9001;
+    bool enable_barricades = true;
+    bool enable_potholes = true;
+    bool headless = false;
+    double duration = -1.0;
+    std::string schedule_json_path = "";
+    double comf_decel = -1.0; // Overrides profile if > 0
+    double car_width = -1.0; // Overrides CAR profile if > 0
+    double car_length = -1.0; // Overrides CAR profile if > 0
 };
 
 SimConfig load_config(const std::string& path);
