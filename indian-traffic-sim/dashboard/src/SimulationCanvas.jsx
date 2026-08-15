@@ -1,12 +1,15 @@
 import React, { useRef, useEffect } from 'react';
 
-const AGENT_COLORS = ['#00e5ff', '#ff9800', '#2196f3', '#f44336', '#9c27b0'];
+const AGENT_COLORS = ['#00e5ff', '#ff9800', '#2196f3', '#f44336', '#9c27b0', '#4caf50', '#795548', '#607d8b'];
 const AGENT_SIZES = [
-    [0.8, 2.0],   // TWO_WHEELER
-    [1.4, 2.6],   // AUTO
-    [1.8, 4.5],   // CAR
-    [2.5, 10.0],  // BUS
-    [0.4, 0.4],   // PEDESTRIAN
+    [0.8, 2.0],   // 0: TWO_WHEELER
+    [1.4, 2.6],   // 1: AUTO
+    [1.8, 4.5],   // 2: CAR
+    [2.5, 10.0],  // 3: BUS
+    [0.4, 0.4],   // 4: PEDESTRIAN
+    [0.6, 1.8],   // 5: BICYCLE
+    [2.5, 12.0],  // 6: TRUCK
+    [2.0, 6.0],   // 7: MEDIUM_VEHICLE
 ];
 
 function resizeCanvas(canvas) {

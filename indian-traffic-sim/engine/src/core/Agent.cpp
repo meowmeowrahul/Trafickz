@@ -6,11 +6,14 @@
 
 const AgentProfile get_agent_profile(AgentType type) {
     static const AgentProfile profiles[] = {
-        {0.8, 2.0, 1.3, 3.0, 4.5, 2.5, 16.67, 35.0 * M_PI/180.0, 4}, // TWO_WHEELER
-        {1.4, 2.6, 2.0, 1.5, 3.0, 2.0, 11.11, 35.0 * M_PI/180.0, 5}, // AUTO_RICKSHAW
-        {1.8, 4.5, 3.0, 2.5, 4.0, 2.0, 13.89, 35.0 * M_PI/180.0, 4}, // CAR
-        {2.5, 10.0, 6.0, 1.0, 3.0, 1.0, 11.11, 30.0 * M_PI/180.0, 4},// BUS
-        {0.5, 0.5, 0.0, 1.5, 3.0, 1.5, 1.8, 180.0 * M_PI/180.0, 0}   // PEDESTRIAN
+        {0.8, 2.0, 1.3, 3.0, 4.5, 2.5, 16.67, 35.0 * M_PI/180.0, 4}, // 0: TWO_WHEELER
+        {1.4, 2.6, 2.0, 1.5, 3.0, 2.0, 11.11, 35.0 * M_PI/180.0, 5}, // 1: AUTO_RICKSHAW
+        {1.8, 4.5, 3.0, 2.5, 4.0, 2.0, 13.89, 35.0 * M_PI/180.0, 4}, // 2: CAR
+        {2.5, 10.0, 6.0, 1.0, 3.0, 1.0, 11.11, 30.0 * M_PI/180.0, 4},// 3: BUS
+        {0.5, 0.5, 0.0, 1.5, 3.0, 1.5, 1.8, 180.0 * M_PI/180.0, 0},  // 4: PEDESTRIAN
+        {0.6, 1.8, 1.1, 1.5, 3.0, 1.5, 5.5, 30.0 * M_PI/180.0, 4},   // 5: BICYCLE
+        {2.5, 12.0, 7.0, 0.8, 2.5, 1.0, 11.11, 30.0 * M_PI/180.0, 4},// 6: TRUCK (Heavy)
+        {2.0, 6.0, 4.0, 1.8, 3.5, 1.5, 12.0, 35.0 * M_PI/180.0, 4}   // 7: MEDIUM_VEHICLE
     };
     return profiles[static_cast<int>(type)];
 }
@@ -50,7 +53,13 @@ void compute_hull(AgentState& state, const SimConfig& config) {
 
 void init_agents_on_roads(std::vector<AgentState>& agents, int count, const RoadGraph& graph, std::mt19937& rng, const SimConfig& config) {
     agents.resize(count);
-    std::discrete_distribution<int> dist_type({40, 15, 35, 10});
+    std::discrete_distribution<int> dist_type;
+    if (!config.vehicle_distribution.empty()) {
+        dist_type = std::discrete_distribution<int>(config.vehicle_distribution.begin(), config.vehicle_distribution.end());
+    } else {
+        // Fallback default
+        dist_type = std::discrete_distribution<int>({40, 15, 35, 10});
+    }
     std::uniform_real_distribution<double> dist_speed(2.0, 8.0);
 
     for (int i = 0; i < count; ++i) {

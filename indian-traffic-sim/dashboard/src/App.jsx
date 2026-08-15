@@ -119,12 +119,15 @@ function App() {
           <span>Tick Rate:</span>
           <strong>{fps} Hz</strong>
         </div>
-        <div className="status-row" style={{marginTop: 15, display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
-          <span style={{color: 'cyan', fontSize: '0.8rem'}}>■ 2W</span>
-          <span style={{color: 'orange', fontSize: '0.8rem'}}>■ Auto</span>
-          <span style={{color: 'blue', fontSize: '0.8rem'}}>■ Car</span>
-          <span style={{color: 'red', fontSize: '0.8rem'}}>■ Bus</span>
-          <span style={{color: 'purple', fontSize: '0.8rem'}}>■ Ped</span>
+        <div className="status-row" style={{marginTop: 15, display: 'flex', gap: '8px', flexWrap: 'wrap', maxWidth: '200px'}}>
+          <span style={{color: '#00e5ff', fontSize: '0.8rem'}}>■ 2W</span>
+          <span style={{color: '#ff9800', fontSize: '0.8rem'}}>■ Auto</span>
+          <span style={{color: '#2196f3', fontSize: '0.8rem'}}>■ Car</span>
+          <span style={{color: '#607d8b', fontSize: '0.8rem'}}>■ Med</span>
+          <span style={{color: '#f44336', fontSize: '0.8rem'}}>■ Bus</span>
+          <span style={{color: '#795548', fontSize: '0.8rem'}}>■ Truck</span>
+          <span style={{color: '#4caf50', fontSize: '0.8rem'}}>■ Cycle</span>
+          <span style={{color: '#9c27b0', fontSize: '0.8rem'}}>■ Ped</span>
         </div>
       </div>
 

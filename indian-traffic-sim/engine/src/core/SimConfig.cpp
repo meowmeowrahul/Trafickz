@@ -44,6 +44,8 @@ SimConfig load_config(const std::string& path) {
     if (j.contains("net_xml_path")) cfg.net_xml_path = j["net_xml_path"];
     if (j.contains("obstacles_json_path")) cfg.obstacles_json_path = j["obstacles_json_path"];
     if (j.contains("ws_port")) cfg.ws_port = j["ws_port"];
+    if (j.contains("route_logit_theta")) cfg.route_logit_theta = j["route_logit_theta"];
+    if (j.contains("route_density_lambda")) cfg.route_density_lambda = j["route_density_lambda"];
     
     return cfg;
 }

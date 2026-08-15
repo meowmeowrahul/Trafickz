@@ -15,12 +15,13 @@ NET_XML_PATH = "/home/rahul/TruTraffic/indian-traffic-sim/map_pipeline/map_outpu
 def get_agent_type(type_str):
     type_str = str(type_str).lower()
     if 'motorcycle' in type_str or 'two-wheeler' in type_str: return 0
-    if 'auto' in type_str or 'rickshaw' in type_str: return 1
+    if 'auto' in type_str or 'rickshaw' in type_str or 'tuk-tuk' in type_str: return 1
     if 'car' in type_str or 'taxi' in type_str: return 2
     if 'bus' in type_str: return 3
     if 'pedestrian' in type_str or 'ped' in type_str: return 4
     if 'bicycle' in type_str or 'cycle' in type_str: return 5
     if 'truck' in type_str or 'heavy' in type_str: return 6
+    if 'medium' in type_str: return 7
     return 2 # default Car
 
 def get_map_offset():

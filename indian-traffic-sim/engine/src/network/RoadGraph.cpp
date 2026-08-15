@@ -3,6 +3,9 @@
 #include <queue>
 #include <limits>
 #include <algorithm>
+#include <chrono>
+#include <atomic>
+#include <random>
 
 void RoadGraph::build_from_net_map(const NetMap& net_map) {
     segments.clear();
@@ -17,7 +20,8 @@ void RoadGraph::build_from_net_map(const NetMap& net_map) {
     for (const auto& [id, edge] : net_map.edges) {
         RoadSegment seg;
         seg.edge_id = id;
-        seg.width = edge.width * edge.num_lanes;
+        seg.is_internal = edge.is_internal;
+        seg.width = edge.width * (edge.is_internal ? 1 : edge.num_lanes);
         seg.speed_limit = edge.speed_limit;
         seg.from_junction_id = edge.from_junction;
         seg.to_junction_id = edge.to_junction;
@@ -52,13 +56,44 @@ void RoadGraph::build_from_net_map(const NetMap& net_map) {
         segments.push_back(seg);
     }
     
-    for (auto& seg : segments) {
-        auto junc_it = net_map.junctions.find(seg.to_junction_id);
-        if (junc_it != net_map.junctions.end()) {
-            for (const auto& out_edge_id : junc_it->second.outgoing_edges) {
-                auto out_it = edge_id_to_segment.find(out_edge_id);
-                if (out_it != edge_id_to_segment.end()) {
-                    seg.outgoing_segment_indices.push_back(out_it->second);
+    // Second pass: wire connectivity using connections
+    for (const auto& conn : net_map.connections) {
+        std::string via_edge_id;
+        if (!conn.via.empty()) {
+            size_t last_us = conn.via.rfind('_');
+            if (last_us != std::string::npos) {
+                via_edge_id = conn.via.substr(0, last_us);
+            }
+        }
+
+        auto from_it = edge_id_to_segment.find(conn.from_edge);
+        auto to_it = edge_id_to_segment.find(conn.to_edge);
+        auto via_it = edge_id_to_segment.find(via_edge_id);
+
+        if (from_it != edge_id_to_segment.end() && to_it != edge_id_to_segment.end()) {
+            if (via_it != edge_id_to_segment.end()) {
+                // Wire: from_edge -> internal_edge -> to_edge
+                auto& from_seg = segments[from_it->second];
+                auto& via_seg = segments[via_it->second];
+
+                if (std::find(from_seg.outgoing_segment_indices.begin(),
+                              from_seg.outgoing_segment_indices.end(),
+                              via_it->second) == from_seg.outgoing_segment_indices.end()) {
+                    from_seg.outgoing_segment_indices.push_back(via_it->second);
+                }
+
+                if (std::find(via_seg.outgoing_segment_indices.begin(),
+                              via_seg.outgoing_segment_indices.end(),
+                              to_it->second) == via_seg.outgoing_segment_indices.end()) {
+                    via_seg.outgoing_segment_indices.push_back(to_it->second);
+                }
+            } else {
+                // No internal edge found — fall back to direct connection
+                auto& from_seg = segments[from_it->second];
+                if (std::find(from_seg.outgoing_segment_indices.begin(),
+                              from_seg.outgoing_segment_indices.end(),
+                              to_it->second) == from_seg.outgoing_segment_indices.end()) {
+                    from_seg.outgoing_segment_indices.push_back(to_it->second);
                 }
             }
         }
@@ -109,7 +144,13 @@ void RoadGraph::generate_test_grid(double size, int roads_per_side) {
     std::cout << "[RoadGraph] Test loop generated with " << segments.size() << " segments.\n";
 }
 
-std::vector<int> RoadGraph::get_shortest_path(int start_segment, int end_segment) const {
+static double sample_gumbel(double theta, std::mt19937& rng) {
+    if (theta <= 1e-6) return 0.0;
+    std::uniform_real_distribution<double> u(1e-10, 1.0);
+    return -theta * std::log(-std::log(u(rng)));
+}
+
+std::vector<int> RoadGraph::get_shortest_path(int start_segment, int end_segment, int agent_id, double theta, const std::vector<int>* segment_occupancy, double density_lambda) const {
     if (start_segment < 0 || start_segment >= (int)segments.size() || 
         end_segment < 0 || end_segment >= (int)segments.size()) {
         return {};
@@ -124,6 +165,17 @@ std::vector<int> RoadGraph::get_shortest_path(int start_segment, int end_segment
     dist[start_segment] = 0.0;
     pq.push({0.0, start_segment});
 
+    // Deterministic, thread-safe, and unique per path-request
+    uint64_t seed = (uint64_t)agent_id * 2654435761ULL;
+    seed ^= (uint64_t)start_segment * 14695981039346656037ULL;
+    seed ^= (uint64_t)end_segment * 1099511628211ULL;
+    std::mt19937 local_rng(seed);
+    
+    std::vector<double> gumbel_noise(segments.size());
+    for (size_t i = 0; i < segments.size(); ++i) {
+        gumbel_noise[i] = sample_gumbel(theta, local_rng);
+    }
+
     while (!pq.empty()) {
         auto [d, u] = pq.top();
         pq.pop();
@@ -132,7 +184,12 @@ std::vector<int> RoadGraph::get_shortest_path(int start_segment, int end_segment
         if (u == end_segment) break;
 
         for (int v : segments[u].outgoing_segment_indices) {
-            double weight = segments[v].length;
+            double occupancy_penalty = 0.0;
+            if (segment_occupancy && v < (int)segment_occupancy->size()) {
+                occupancy_penalty = density_lambda * (*segment_occupancy)[v];
+            }
+            double weight = segments[v].length + gumbel_noise[v] + occupancy_penalty;
+            weight = std::max(0.1, weight); // Prevent negative edge weights
             if (dist[u] + weight < dist[v]) {
                 dist[v] = dist[u] + weight;
                 prev[v] = u;

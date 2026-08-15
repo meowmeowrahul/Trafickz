@@ -22,11 +22,16 @@
     "fsm_turn_max_speed": 5.0,
     "min_route_segments": 5,
     "vehicle_distribution": [
-        0.4,
-        0.15,
-        0.35,
-        0.1
+        0.2625931159550298,
+        0.14329533797980454,
+        0.461970757645917,
+        0.022739401768256253,
+        0.0028819740497032305,
+        0.00015691380448483005,
+        0.00522315079502045,
+        0.10113934800178387
     ],
     "net_xml_path": "/home/rahul/TruTraffic/indian-traffic-sim/map_pipeline/map_output/network.net.xml",
-    "ws_port": 9001
+    "ws_port": 9001,
+    "route_logit_theta": 0.15
 }

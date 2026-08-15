@@ -31,10 +31,10 @@ NetMap NetXmlParser::parse(const std::string& filepath) {
 
     for (pugi::xml_node edge = doc.child("net").child("edge"); edge; edge = edge.next_sibling("edge")) {
         std::string id = edge.attribute("id").value();
-        if (!id.empty() && id[0] == ':') continue; // internal edge
 
         NetEdge ne;
         ne.id = id;
+        ne.is_internal = (edge.attribute("function") && std::string(edge.attribute("function").value()) == "internal");
         ne.from_junction = edge.attribute("from").value();
         ne.to_junction = edge.attribute("to").value();
 
@@ -74,7 +74,16 @@ NetMap NetXmlParser::parse(const std::string& filepath) {
     for (pugi::xml_node conn = doc.child("net").child("connection"); conn; conn = conn.next_sibling("connection")) {
         std::string from = conn.attribute("from").value();
         std::string to = conn.attribute("to").value();
+        std::string via = conn.attribute("via").value();
         if (!from.empty() && from[0] != ':' && !to.empty() && to[0] != ':') {
+            NetConnection nc;
+            nc.from_edge = from;
+            nc.to_edge = to;
+            nc.from_lane = conn.attribute("fromLane").as_int(0);
+            nc.to_lane = conn.attribute("toLane").as_int(0);
+            nc.via = via;
+            map.connections.push_back(nc);
+            
             auto it = map.edges.find(from);
             if (it != map.edges.end()) {
                 auto& junc = map.junctions[it->second.to_junction];

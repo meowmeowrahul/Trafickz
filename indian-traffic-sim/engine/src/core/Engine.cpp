@@ -254,7 +254,7 @@ void Engine::tick() {
             int start_seg = road_graph_.get_nearest_segment(ev.entry);
             int end_seg = road_graph_.get_nearest_segment(ev.exit);
             
-            new_agent.route = road_graph_.get_shortest_path(start_seg, end_seg);
+            new_agent.route = road_graph_.get_shortest_path(start_seg, end_seg, new_agent.id, config_.route_logit_theta);
             if (new_agent.route.empty()) {
                 new_agent.route.push_back(start_seg);
             }

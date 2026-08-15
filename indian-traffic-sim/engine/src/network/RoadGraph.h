@@ -17,6 +17,7 @@ struct RoadSegment {
     std::string from_junction_id;
     std::string to_junction_id;
     std::vector<int> outgoing_segment_indices;
+    bool is_internal = false;  // NEW: true for junction connector segments
 };
 
 class RoadGraph {
@@ -26,7 +27,7 @@ public:
     
     void build_from_net_map(const NetMap& net_map);
     std::vector<int> get_random_route(int start_segment, int min_segments, std::mt19937& rng) const;
-    std::vector<int> get_shortest_path(int start_segment, int end_segment) const;
+    std::vector<int> get_shortest_path(int start_segment, int end_segment, int agent_id = 0, double theta = 0.0, const std::vector<int>* segment_occupancy = nullptr, double density_lambda = 0.0) const;
     int get_nearest_segment(const Vec2& point) const;
     void generate_test_grid(double size, int roads_per_side);
 };

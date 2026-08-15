@@ -14,7 +14,8 @@ enum class AgentType : uint8_t {
     BUS           = 3,
     PEDESTRIAN    = 4,
     BICYCLE       = 5,
-    TRUCK         = 6
+    TRUCK         = 6,
+    MEDIUM_VEHICLE= 7
 };
 
 struct AgentProfile {

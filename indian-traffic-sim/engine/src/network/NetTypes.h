@@ -14,6 +14,7 @@ struct NetEdge {
     double speed_limit = 13.89;
     double width = 3.2;
     std::vector<std::vector<Vec2>> lane_shapes;
+    bool is_internal = false;
 };
 
 struct NetJunction {
@@ -25,9 +26,18 @@ struct NetJunction {
     std::vector<Vec2> shape;
 };
 
+struct NetConnection {
+    std::string from_edge;
+    int from_lane;
+    std::string to_edge;
+    int to_lane;
+    std::string via;
+};
+
 struct NetMap {
     std::unordered_map<std::string, NetEdge> edges;
     std::unordered_map<std::string, NetJunction> junctions;
+    std::vector<NetConnection> connections;
 };
 
 #endif

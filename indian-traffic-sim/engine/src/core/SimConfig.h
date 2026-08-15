@@ -39,6 +39,8 @@ struct SimConfig {
     double comf_decel = -1.0; // Overrides profile if > 0
     double car_width = -1.0; // Overrides CAR profile if > 0
     double car_length = -1.0; // Overrides CAR profile if > 0
+    double route_logit_theta = 0.15; // Logit scale parameter
+    double route_density_lambda = 0.0; // Density penalty weight
 };
 
 SimConfig load_config(const std::string& path);

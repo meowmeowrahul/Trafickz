@@ -43,6 +43,16 @@ void update_physics(const std::vector<AgentState>& read_state,
                     const RoadGraph& graph,
                     const ObstacleSet& obstacles) {
     
+    std::vector<int> segment_occupancy(graph.segments.size(), 0);
+    for (const auto& a : read_state) {
+        if (!a.route.empty() && a.route_segment_idx >= 0 && a.route_segment_idx < (int)a.route.size()) {
+            int seg_idx = a.route[a.route_segment_idx];
+            if (seg_idx >= 0 && seg_idx < (int)segment_occupancy.size()) {
+                segment_occupancy[seg_idx]++;
+            }
+        }
+    }
+    
     #pragma omp parallel for schedule(static)
     for (size_t i = 0; i < read_state.size(); ++i) {
         const auto& ego = read_state[i];
@@ -104,7 +114,7 @@ void update_physics(const std::vector<AgentState>& read_state,
                             if (next.route_segment_idx + 1 >= (int)next.route.size()) {
                                 if (!seg.outgoing_segment_indices.empty()) {
                                     int dest = (next.id * 17 + next.route_segment_idx * 31) % graph.segments.size();
-                                    std::vector<int> new_path = graph.get_shortest_path(seg_idx, dest);
+                                    std::vector<int> new_path = graph.get_shortest_path(seg_idx, dest, next.id, config.route_logit_theta, &segment_occupancy, config.route_density_lambda);
                                     if (new_path.size() > 1) {
                                         for (size_t k = 1; k < new_path.size(); ++k) {
                                             next.route.push_back(new_path[k]);
@@ -292,7 +302,7 @@ void update_physics(const std::vector<AgentState>& read_state,
         next.position.x = ego.position.x + speed_new * std::cos(next.heading) * config.dt;
         next.position.y = ego.position.y + speed_new * std::sin(next.heading) * config.dt;
 
-        // --- Smooth Road Boundary Constraint ---
+        // --- Road Boundary Constraint ---
         if (ego.route_segment_idx < (int)ego.route.size()) {
             int seg_idx = ego.route[ego.route_segment_idx];
             if (seg_idx >= 0 && seg_idx < (int)graph.segments.size()) {
@@ -306,6 +316,7 @@ void update_physics(const std::vector<AgentState>& read_state,
                     double edge_len_sq = edge.length_sq();
                     if (edge_len_sq > 1e-6) {
                         double t = (next.position - p_a).dot(edge) / edge_len_sq;
+                        t = std::clamp(t, 0.0, 1.0);
                         Vec2 proj = p_a + edge * t;
                         
                         Vec2 offset_vec = next.position - proj;
@@ -313,11 +324,8 @@ void update_physics(const std::vector<AgentState>& read_state,
                         double max_offset = std::max(0.0, seg.width / 2.0 - profile.width / 2.0); 
                         
                         if (lateral_dist > max_offset && lateral_dist > 1e-6) {
-                            if (t >= -0.1 && t <= 1.1) {
-                                double penetration = lateral_dist - max_offset;
-                                double slide = std::min(penetration, 5.0 * config.dt);
-                                next.position = next.position - offset_vec.normalized() * slide;
-                            }
+                            // Hard clamp — vehicle always stays on road
+                            next.position = proj + offset_vec.normalized() * max_offset;
                         }
                     }
                 }
