@@ -59,6 +59,7 @@ struct AgentState {
     double lateral_offset = 0.0;
     TacticalState tactical_state = TacticalState::FREE_FLOW;
     double squeeze_cooldown = 0.0;
+    double squeeze_duration = 0.0;
     
     // Per-agent randomized capabilities
     double max_speed;

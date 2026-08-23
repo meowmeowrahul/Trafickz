@@ -46,6 +46,7 @@ SimConfig load_config(const std::string& path) {
     if (j.contains("ws_port")) cfg.ws_port = j["ws_port"];
     if (j.contains("route_logit_theta")) cfg.route_logit_theta = j["route_logit_theta"];
     if (j.contains("route_density_lambda")) cfg.route_density_lambda = j["route_density_lambda"];
+    if (j.contains("lateral_spread_sigma")) cfg.lateral_spread_sigma = j["lateral_spread_sigma"];
     
     return cfg;
 }

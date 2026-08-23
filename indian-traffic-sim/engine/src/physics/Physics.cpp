@@ -75,6 +75,7 @@ void update_physics(const std::vector<AgentState>& read_state,
         double target_speed = ego.max_speed; 
         
         Vec2 waypoint_target = ego.position + forward * 10.0; 
+        Vec2 road_direction = forward;
         bool has_waypoint = false;
         
         if (ego.route_segment_idx < (int)ego.route.size()) {
@@ -92,12 +93,13 @@ void update_physics(const std::vector<AgentState>& read_state,
                             seg_dir = (seg.centerline[ego.waypoint_idx] - seg.centerline[ego.waypoint_idx-1]).normalized();
                         }
                     }
+                    road_direction = seg_dir;
                     
                     double max_off = std::max(0.0, seg.width / 2.0 - profile.width / 2.0 - 0.3);
                     if (next.lateral_offset > max_off) next.lateral_offset = max_off;
                     if (next.lateral_offset < -max_off) next.lateral_offset = -max_off;
                     
-                    waypoint_target = wpt + seg_dir.perpendicular() * next.lateral_offset;
+                    waypoint_target = wpt + road_direction.perpendicular() * next.lateral_offset;
                     has_waypoint = true;
 
                     bool passed = false;
@@ -233,14 +235,30 @@ void update_physics(const std::vector<AgentState>& read_state,
 
         Vec2 f_goal(0.0, 0.0);
         if (has_waypoint) {
-            Vec2 dir_to_waypoint = (waypoint_target - ego.position).normalized();
-            f_goal = (dir_to_waypoint * target_speed - forward * ego.speed) * (1.0 / config.sfm_tau) * config.sfm_goal_weight;
+            // Primary force: push vehicle ALONG the road direction (not toward waypoint)
+            Vec2 desired_vel = road_direction * target_speed;
+            
+            // Gentle lateral correction: nudge toward the waypoint position
+            // Project out the longitudinal component, keep only the lateral error
+            Vec2 to_waypoint = waypoint_target - ego.position;
+            Vec2 lateral_error = to_waypoint - road_direction * to_waypoint.dot(road_direction);
+            desired_vel = desired_vel + lateral_error * 0.8;
+            
+            f_goal = (desired_vel - forward * ego.speed) * (1.0 / config.sfm_tau) * config.sfm_goal_weight;
+            
+            // Per-agent lateral bias — proactive spreading like real Indian traffic
+            Vec2 road_right = road_direction.perpendicular();
+            double lateral_bias = std::sin(ego.id * 1.618033988749895) * config.lateral_spread_sigma;
+            f_goal = f_goal + road_right * lateral_bias;
         }
 
+        double squeeze_force = 2.0 * (profile.width / 1.8);
         if (next.tactical_state == TacticalState::SQUEEZE_LEFT) {
-            f_goal = f_goal - right * 2.0; 
+            f_goal = f_goal - right * squeeze_force; 
+            next.lateral_offset -= 0.03 * config.dt / 0.02;
         } else if (next.tactical_state == TacticalState::SQUEEZE_RIGHT) {
-            f_goal = f_goal + right * 2.0; 
+            f_goal = f_goal + right * squeeze_force; 
+            next.lateral_offset += 0.03 * config.dt / 0.02;
         }
         
         Vec2 f_obstacle(0.0, 0.0);
@@ -275,7 +293,9 @@ void update_physics(const std::vector<AgentState>& read_state,
         if (f_total.length_sq() > 1e-6) {
             desired_heading = std::atan2(f_total.y, f_total.x);
             double raw_delta = normalize_angle(desired_heading - ego.heading);
-            double gain = (ego.speed < 3.0) ? 0.15 : 0.05;
+            // Smooth interpolation: snappy at low speed, stable at high speed
+            double speed_blend = std::clamp(ego.speed / 8.0, 0.0, 1.0); // 0→1 over 0-8 m/s
+            double gain = 0.6 * (1.0 - speed_blend) + 0.25 * speed_blend;
             heading_delta = raw_delta * gain;
         }
 
@@ -293,6 +313,8 @@ void update_physics(const std::vector<AgentState>& read_state,
         } else {
             if (ego.speed > 0.1) {
                 theta_new += (speed_new / profile.wheelbase) * std::tan(steer) * config.dt;
+            } else {
+                theta_new += std::clamp(heading_delta, -profile.max_steer, profile.max_steer) * 0.3 * config.dt;
             }
         }
 

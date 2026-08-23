@@ -13,8 +13,8 @@ function App() {
   const wsRef = useRef(null);
 
   const [numAgents, setNumAgents] = useState(200);
-  const [idmT, setIdmT] = useState(0.67);
-  const [sfmA, setSfmA] = useState(1.26);
+  const [idmT, setIdmT] = useState(1.5);
+  const [sfmA, setSfmA] = useState(5.0);
   const [enableBarricades, setEnableBarricades] = useState(true);
   const [enablePotholes, setEnablePotholes] = useState(true);
 
