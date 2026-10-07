@@ -1,4 +1,96 @@
+import { useEffect, useRef, useState } from 'react';
 import { AGENT_TYPE_LABELS, AGENT_TYPE_COLORS } from '../utils/constants.js';
+
+const MAX_HISTORY = 90; // 90 points
+
+function LineChart({ data, color = '#16A34A', label, unit = '' }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    ctx.clearRect(0, 0, W, H);
+
+    const vals = data.filter((v) => v != null && Number.isFinite(v));
+    if (vals.length < 2) {
+      ctx.fillStyle = '#9CA3AF';
+      ctx.font = '11px Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Accumulating real-time telemetry...', W / 2, H / 2);
+      return;
+    }
+
+    const minV = Math.min(...vals);
+    const maxV = Math.max(...vals);
+    const range = maxV - minV || 1;
+    const padX = 8, padY = 8;
+
+    // Grid lines
+    ctx.strokeStyle = '#E5E7EB';
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach((f) => {
+      const y = padY + (1 - f) * (H - padY * 2);
+      ctx.beginPath();
+      ctx.moveTo(padX, y);
+      ctx.lineTo(W - padX, y);
+      ctx.stroke();
+    });
+
+    // Area under line
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = padX + (i / (MAX_HISTORY - 1)) * (W - padX * 2);
+      const normalized = v != null ? (v - minV) / range : 0;
+      const y = padY + (1 - normalized) * (H - padY * 2);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.lineTo(W - padX, H - padY);
+    ctx.lineTo(padX, H - padY);
+    ctx.closePath();
+
+    const grad = ctx.createLinearGradient(0, padY, 0, H - padY);
+    grad.addColorStop(0, color + '33');
+    grad.addColorStop(1, color + '00');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Plot line
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = padX + (i / (MAX_HISTORY - 1)) * (W - padX * 2);
+      const normalized = v != null ? (v - minV) / range : 0;
+      const y = padY + (1 - normalized) * (H - padY * 2);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Latest value indicator
+    const lastVal = data[data.length - 1];
+    if (lastVal != null) {
+      ctx.fillStyle = '#111827';
+      ctx.font = 'bold 12px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(
+        `${Number.isFinite(lastVal) ? lastVal.toFixed(1) : '—'}${unit}`,
+        W - padX,
+        16
+      );
+    }
+  }, [data, color, unit]);
+
+  return (
+    <div className="chart-card">
+      <div className="chart-label">{label}</div>
+      <canvas ref={canvasRef} width={420} height={120} className="chart-canvas" />
+    </div>
+  );
+}
 
 function MetricCard({ label, value, sub, accent, iconSvg }) {
   return (
@@ -23,6 +115,31 @@ export default function Overview({ connected, roadData, trafficMetrics, fps, onG
   const barricades = roadData?.barricades?.length ?? 0;
   const potholes = roadData?.potholes?.length ?? 0;
 
+  const historyRef = useRef({
+    agentCount: new Array(MAX_HISTORY).fill(null),
+    avgSpeed: new Array(MAX_HISTORY).fill(null),
+    fps: new Array(MAX_HISTORY).fill(null),
+  });
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const h = historyRef.current;
+    h.agentCount.push(trafficMetrics.total || 0);
+    h.agentCount.shift();
+
+    if (trafficMetrics.avgSpeed != null) {
+      h.avgSpeed.push(trafficMetrics.avgSpeed);
+    } else {
+      h.avgSpeed.push(null);
+    }
+    h.avgSpeed.shift();
+
+    h.fps.push(fps || 0);
+    h.fps.shift();
+
+    setTick((t) => t + 1);
+  }, [trafficMetrics, fps]);
+
   return (
     <div className="page-overview">
       <div className="page-header">
@@ -41,7 +158,7 @@ export default function Overview({ connected, roadData, trafficMetrics, fps, onG
           label="Active Agents"
           value={trafficMetrics.total || 0}
           sub="live binary telemetry"
-          accent="#38BDF8"
+          accent="#16A34A"
           iconSvg={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -53,7 +170,7 @@ export default function Overview({ connected, roadData, trafficMetrics, fps, onG
           label="Corridor Avg Speed"
           value={trafficMetrics.avgSpeed != null ? `${trafficMetrics.avgSpeed.toFixed(1)} m/s` : '—'}
           sub={trafficMetrics.avgSpeed != null ? `${(trafficMetrics.avgSpeed * 3.6).toFixed(1)} km/h` : 'waiting for telemetry'}
-          accent="#22C55E"
+          accent="#16A34A"
           iconSvg={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
@@ -63,7 +180,7 @@ export default function Overview({ connected, roadData, trafficMetrics, fps, onG
         <MetricCard
           label="Renderer FPS"
           value={fps}
-          sub="target: ≥30 FPS"
+          sub="target: ≥ 30 FPS"
           accent={fps >= 30 ? '#22C55E' : fps >= 20 ? '#F59E0B' : '#EF4444'}
           iconSvg={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -77,7 +194,7 @@ export default function Overview({ connected, roadData, trafficMetrics, fps, onG
           label="Road Segments"
           value={netEdges || '—'}
           sub={netJunctions ? `${netJunctions} junctions loaded` : 'waiting for network'}
-          accent="#14B8A6"
+          accent="#16A34A"
           iconSvg={
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
@@ -85,6 +202,49 @@ export default function Overview({ connected, roadData, trafficMetrics, fps, onG
           }
         />
       </div>
+
+      {/* Real-time Telemetry Section */}
+      <section className="panel" style={{ padding: '20px' }}>
+        <div className="panel-hdr" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div>
+            <span className="panel-eyebrow">Real-Time Telemetry</span>
+            <h3 style={{ margin: 0 }}>Corridor Telemetry Feeds & Time-Series</h3>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <span className={`conn-badge ${connected ? 'online' : 'offline'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
+              <span className="conn-dot" />
+              {connected ? 'Streaming at 50 Hz' : 'Telemetry Disconnected'}
+            </span>
+          </div>
+        </div>
+
+        <div className="charts-grid">
+          <LineChart
+            data={historyRef.current.agentCount}
+            color="#16A34A"
+            label="Active Agents Count"
+            unit=""
+          />
+          <LineChart
+            data={historyRef.current.avgSpeed}
+            color="#15803D"
+            label="Corridor Average Velocity"
+            unit=" m/s"
+          />
+          <LineChart
+            data={historyRef.current.fps}
+            color="#F59E0B"
+            label="Frontend Frame Rate"
+            unit=" FPS"
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #E5E7EB', fontSize: '12px', color: 'var(--text-secondary)' }}>
+          <span>Wire Protocol: <strong style={{ color: 'var(--text-primary)' }}>21 Bytes / Agent (Binary WebSocket Stream)</strong></span>
+          <span>Physics Delta: <strong style={{ color: 'var(--text-primary)' }}>50 Hz (Δt = 0.02s)</strong></span>
+          <span>Traffic Density: <strong style={{ color: trafficMetrics.density === 'Critical' ? 'var(--accent-red)' : trafficMetrics.density === 'High' ? 'var(--accent-amber)' : 'var(--accent-green)' }}>{trafficMetrics.density}</strong></span>
+        </div>
+      </section>
 
       <div className="ov-two-col">
         {/* Vehicle Distribution */}

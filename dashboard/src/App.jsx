@@ -3,13 +3,7 @@ import Sidebar from './components/Sidebar.jsx';
 import Topbar from './components/Topbar.jsx';
 import Overview from './pages/Overview.jsx';
 import LiveSimulation from './pages/LiveSimulation.jsx';
-import Scenario from './pages/Scenario.jsx';
-import Agents from './pages/Agents.jsx';
 import MapPage from './pages/MapPage.jsx';
-import Telemetry from './pages/Telemetry.jsx';
-import Calibration from './pages/Calibration.jsx';
-import Performance from './pages/Performance.jsx';
-import Settings from './pages/Settings.jsx';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { CustomRoadSimulator } from './utils/customRoadSimulator.js';
 import './App.css';
@@ -249,17 +243,6 @@ export default function App() {
             />
           )}
 
-          {activeNav === 'Scenario' && (
-            <Scenario onGoToSim={() => setActiveNav('Live Simulation')} />
-          )}
-
-          {activeNav === 'Agents' && (
-            <Agents
-              agentsSnapshot={agentsSnapshot}
-              onSelectAgent={handleSelectAgent}
-            />
-          )}
-
           {activeNav === 'Map' && (
             <MapPage
               roadData={activeRoadData}
@@ -269,25 +252,6 @@ export default function App() {
             />
           )}
 
-          {activeNav === 'Telemetry' && (
-            <Telemetry
-              trafficMetrics={trafficMetrics}
-              fps={fps}
-              connected={connected || isCustomRoad}
-            />
-          )}
-
-          {activeNav === 'Calibration' && <Calibration />}
-
-          {activeNav === 'Performance' && (
-            <Performance
-              fps={fps}
-              trafficMetrics={trafficMetrics}
-              connected={connected || isCustomRoad}
-            />
-          )}
-
-          {activeNav === 'Settings' && <Settings {...commonLayerProps} />}
         </main>
       </div>
     </div>
