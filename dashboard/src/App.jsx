@@ -1,172 +1,295 @@
-import React, { useState, useEffect, useRef } from 'react';
-import SimulationCanvas from './SimulationCanvas';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Sidebar from './components/Sidebar.jsx';
+import Topbar from './components/Topbar.jsx';
+import Overview from './pages/Overview.jsx';
+import LiveSimulation from './pages/LiveSimulation.jsx';
+import Scenario from './pages/Scenario.jsx';
+import Agents from './pages/Agents.jsx';
+import MapPage from './pages/MapPage.jsx';
+import Telemetry from './pages/Telemetry.jsx';
+import Calibration from './pages/Calibration.jsx';
+import Performance from './pages/Performance.jsx';
+import Settings from './pages/Settings.jsx';
+import { useWebSocket } from './hooks/useWebSocket.js';
+import { CustomRoadSimulator } from './utils/customRoadSimulator.js';
 import './App.css';
 
-function App() {
-  const [connected, setConnected] = useState(false);
-  const [agentCount, setAgentCount] = useState(0);
+export default function App() {
+  const [activeNav, setActiveNav] = useState('Live Simulation');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState(null);
+  const [agentsSnapshot, setAgentsSnapshot] = useState([]);
+  const [fitViewToken, setFitViewToken] = useState(0);
+
+  // Custom uploaded road network state
+  const [customRoadData, setCustomRoadData] = useState(null);
+
+  // Layer toggles
+  const [showPedestrians, setShowPedestrians] = useState(true);
+  const [showVehicles, setShowVehicles] = useState(true);
+  const [showRoadBoundaries, setShowRoadBoundaries] = useState(true);
+  const [showObstacles, setShowObstacles] = useState(true);
+
   const [fps, setFps] = useState(0);
-  const [roadData, setRoadData] = useState(null);
-  const [agents, setAgents] = useState([]);
-  const agentsRef = useRef([]);
-  const framesRef = useRef(0);
-  const wsRef = useRef(null);
+  const [simTime, setSimTime] = useState('00:00:00');
+  const [trafficMetrics, setTrafficMetrics] = useState({
+    total: 0,
+    byType: {},
+    avgSpeed: null,
+    density: 'Waiting',
+  });
 
-  const [numAgents, setNumAgents] = useState(200);
-  const [idmT, setIdmT] = useState(1.5);
-  const [sfmA, setSfmA] = useState(5.0);
-  const [enableBarricades, setEnableBarricades] = useState(true);
-  const [enablePotholes, setEnablePotholes] = useState(true);
+  const {
+    connected,
+    roadData: backendRoadData,
+    agentsRef: backendAgentsRef,
+    lastTickTimeRef: backendLastTickTimeRef,
+    tickIntervalRef: backendTickIntervalRef,
+    sendControl,
+  } = useWebSocket();
 
-  const [isControlsOpen, setIsControlsOpen] = useState(true);
+  const isCustomRoad = !!customRoadData;
+  const activeRoadData = customRoadData || backendRoadData;
 
-  const applyControls = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-            type: "control",
-            num_agents: numAgents,
-            idm_T: idmT,
-            sfm_A: sfmA,
-            barricades_enabled: enableBarricades,
-            potholes_enabled: enablePotholes
-        }));
-    }
-  };
+  // Custom road traffic simulator refs
+  const customAgentsRef = useRef([]);
+  const customLastTickTimeRef = useRef(performance.now());
+  const customTickIntervalRef = useRef(20);
+  const simulatorRef = useRef(null);
 
+  // Initialize and run custom road simulator when custom road is active
   useEffect(() => {
-    let ws;
-    let reconnectTimer;
-    let isMounted = true;
-    
-    const connect = () => {
-      ws = new WebSocket('ws://localhost:9001');
-      ws.binaryType = 'arraybuffer';
-      
-      ws.onopen = () => {
-        if (!isMounted) return;
-        setConnected(true);
-        wsRef.current = ws;
-      };
-      
-      ws.onclose = () => {
-        setConnected(false);
-        wsRef.current = null;
-        if (isMounted) reconnectTimer = setTimeout(connect, 2000);
-      };
-      
-      ws.onmessage = (event) => {
-        if (!isMounted) return;
-        if (typeof event.data === 'string') {
-           const data = JSON.parse(event.data);
-           if (data.type === 'road_network') {
-               setRoadData(data);
-           }
-           return;
-        }
-        
-        const buffer = event.data;
-        const view = new DataView(buffer);
-        const count = buffer.byteLength / 21;
-        
-        agentsRef.current.length = count;
-        for (let i = 0; i < count; i++) {
-          const offset = i * 21;
-          agentsRef.current[i] = {
-            id: view.getUint32(offset, true),
-            type: view.getUint8(offset + 4),
-            x: view.getFloat32(offset + 5, true),
-            y: view.getFloat32(offset + 9, true),
-            heading: view.getFloat32(offset + 13, true),
-            speed: view.getFloat32(offset + 17, true)
-          };
-        }
-        // Only trigger state updates for the HUD, not the 3D canvas itself
-        setAgentCount(count);
-        framesRef.current += 1;
-      };
+    if (!isCustomRoad || !customRoadData) {
+      simulatorRef.current = null;
+      return;
+    }
+
+    const sim = new CustomRoadSimulator(customRoadData, { agentCount: 180, speedMultiplier: 1.0 });
+    simulatorRef.current = sim;
+    customAgentsRef.current = sim.getAgents();
+
+    let running = true;
+    let lastTime = performance.now();
+
+    const loop = () => {
+      if (!running) return;
+      const now = performance.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+      if (simulatorRef.current) {
+        customAgentsRef.current = simulatorRef.current.step(dt);
+        customLastTickTimeRef.current = now;
+      }
+      requestAnimationFrame(loop);
     };
-    
-    connect();
-    
-    const fpsInterval = setInterval(() => {
-      if (!isMounted) return;
-      setFps(framesRef.current);
-      framesRef.current = 0;
-      setAgents(agentsRef.current); // Sync to react tree occasionally if needed, but we pass ref to canvas
-    }, 1000);
-    
+
+    const af = requestAnimationFrame(loop);
     return () => {
-      isMounted = false;
-      clearTimeout(reconnectTimer);
-      clearInterval(fpsInterval);
-      if (ws) ws.close();
+      running = false;
+      cancelAnimationFrame(af);
     };
+  }, [isCustomRoad, customRoadData]);
+
+  // Active agents ref based on mode
+  const activeAgentsRef = isCustomRoad ? customAgentsRef : backendAgentsRef;
+  const activeLastTickTimeRef = isCustomRoad ? customLastTickTimeRef : backendLastTickTimeRef;
+  const activeTickIntervalRef = isCustomRoad ? customTickIntervalRef : backendTickIntervalRef;
+
+  const framesRef = useRef(0);
+
+  // Clock
+  useEffect(() => {
+    const tick = () => setSimTime(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, []);
 
-  return (
-    <>
-      <div className="hud">
-        <h1>TruTraffic Twin</h1>
-        <div className="status-row">
-          <div className={`dot ${connected ? 'connected' : ''}`}></div>
-          {connected ? 'LIVE STREAM' : 'OFFLINE'}
-        </div>
-        <div className="status-row">
-          <span>Agents:</span>
-          <strong>{agentCount}</strong>
-        </div>
-        <div className="status-row">
-          <span>Tick Rate:</span>
-          <strong>{fps} Hz</strong>
-        </div>
-        <div className="status-row" style={{marginTop: 15, display: 'flex', gap: '8px', flexWrap: 'wrap', maxWidth: '200px'}}>
-          <span style={{color: '#00e5ff', fontSize: '0.8rem'}}>■ 2W</span>
-          <span style={{color: '#ff9800', fontSize: '0.8rem'}}>■ Auto</span>
-          <span style={{color: '#2196f3', fontSize: '0.8rem'}}>■ Car</span>
-          <span style={{color: '#607d8b', fontSize: '0.8rem'}}>■ Med</span>
-          <span style={{color: '#f44336', fontSize: '0.8rem'}}>■ Bus</span>
-          <span style={{color: '#795548', fontSize: '0.8rem'}}>■ Truck</span>
-          <span style={{color: '#4caf50', fontSize: '0.8rem'}}>■ Cycle</span>
-          <span style={{color: '#9c27b0', fontSize: '0.8rem'}}>■ Ped</span>
-        </div>
-      </div>
+  const handleCountFrame = useCallback(() => {
+    framesRef.current += 1;
+  }, []);
 
-      <div className="control-panel" style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(0,0,0,0.8)', padding: 20, borderRadius: 8, color: 'white', zIndex: 100, minWidth: 250 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setIsControlsOpen(!isControlsOpen)}>
-          <h3 style={{ margin: 0 }}>Live Controls</h3>
-          <span style={{ fontSize: '18px' }}>{isControlsOpen ? '▲' : '▼'}</span>
-        </div>
-        
-        {isControlsOpen && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5 }}>Agent Count: {numAgents}</label>
-                <input type="range" min="50" max="500" step="10" value={numAgents} onChange={(e) => setNumAgents(parseFloat(e.target.value))} style={{ width: '100%' }} />
-            </div>
-            <div style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5 }}>IDM Aggressiveness (T): {idmT}</label>
-                <input type="range" min="0.5" max="3.0" step="0.1" value={idmT} onChange={(e) => setIdmT(parseFloat(e.target.value))} style={{ width: '100%' }} />
-            </div>
-            <div style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5 }}>SFM Repulsion (A): {sfmA}</label>
-                <input type="range" min="1.0" max="10.0" step="0.5" value={sfmA} onChange={(e) => setSfmA(parseFloat(e.target.value))} style={{ width: '100%' }} />
-            </div>
-            <div style={{ marginBottom: 15, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input type="checkbox" id="chkBarricades" checked={enableBarricades} onChange={(e) => setEnableBarricades(e.target.checked)} />
-                <label htmlFor="chkBarricades" style={{ cursor: 'pointer' }}>Enable Barricades</label>
-            </div>
-            <div style={{ marginBottom: 15, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input type="checkbox" id="chkPotholes" checked={enablePotholes} onChange={(e) => setEnablePotholes(e.target.checked)} />
-                <label htmlFor="chkPotholes" style={{ cursor: 'pointer' }}>Enable Potholes</label>
-            </div>
-            <button onClick={applyControls} style={{ width: '100%', padding: '10px', background: '#007BFF', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Apply Changes</button>
-          </div>
-        )}
+  // Metrics at 1 Hz
+  useEffect(() => {
+    const id = setInterval(() => {
+      const agents = activeAgentsRef.current || [];
+      let speedSum = 0, validSpeedCount = 0;
+      const byType = {};
+      for (let i = 0; i < agents.length; i++) {
+        const a = agents[i];
+        if (!a) continue;
+        const t = String(a.type ?? 2);
+        byType[t] = (byType[t] || 0) + 1;
+        if (Number.isFinite(a.speed)) { speedSum += a.speed; validSpeedCount++; }
+      }
+      const total = agents.length;
+      const avgSpeed = validSpeedCount > 0 ? speedSum / validSpeedCount : null;
+      let density = 'Low';
+      if (total > 350) density = 'Critical';
+      else if (total > 220) density = 'High';
+      else if (total > 80) density = 'Moderate';
+      setTrafficMetrics({ total, byType, avgSpeed, density });
+      setAgentsSnapshot([...agents]);
+      setFps(framesRef.current);
+      framesRef.current = 0;
+    }, 1000);
+    return () => clearInterval(id);
+  }, [activeAgentsRef]);
+
+  // Deselect if agent removed
+  useEffect(() => {
+    if (selectedAgentId !== null && !agentsSnapshot.some((a) => a.id === selectedAgentId)) {
+      setSelectedAgentId(null);
+    }
+  }, [agentsSnapshot, selectedAgentId]);
+
+  const selectedAgent = useMemo(
+    () => agentsSnapshot.find((a) => a.id === selectedAgentId) ?? null,
+    [agentsSnapshot, selectedAgentId]
+  );
+
+  const handleNav = useCallback((id) => {
+    setActiveNav(id);
+  }, []);
+
+  const handleSelectAgent = useCallback((id) => {
+    setSelectedAgentId(id);
+    setActiveNav('Live Simulation');
+  }, []);
+
+  const handleFitView = useCallback(() => {
+    setFitViewToken((t) => t + 1);
+  }, []);
+
+  const handleApplyCustomRoad = useCallback((newRoadData) => {
+    setCustomRoadData(newRoadData);
+    setFitViewToken((t) => t + 1);
+  }, []);
+
+  const handleResetCustomRoad = useCallback(() => {
+    setCustomRoadData(null);
+    setFitViewToken((t) => t + 1);
+  }, []);
+
+  const handleSendControl = useCallback((msg) => {
+    if (isCustomRoad) {
+      if (msg.num_agents != null) {
+        simulatorRef.current?.setAgentCount(msg.num_agents);
+      }
+      if (msg.speed_multiplier != null) {
+        simulatorRef.current?.setSpeedMultiplier(msg.speed_multiplier);
+      }
+      if (msg.reset) {
+        simulatorRef.current?.reset();
+      }
+    } else {
+      sendControl(msg);
+    }
+  }, [isCustomRoad, sendControl]);
+
+  const commonLayerProps = {
+    showPedestrians,
+    setShowPedestrians,
+    showVehicles,
+    setShowVehicles,
+    showRoadBoundaries,
+    setShowRoadBoundaries,
+    showObstacles,
+    setShowObstacles,
+  };
+
+  return (
+    <div className="trafickz-app">
+      <Sidebar
+        active={activeNav}
+        onNav={handleNav}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((c) => !c)}
+      />
+
+      <div className="main-panel">
+        <Topbar
+          connected={connected || isCustomRoad}
+          roadData={activeRoadData}
+          fps={fps}
+          agentCount={trafficMetrics.total}
+          simTime={simTime}
+        />
+
+        <main className="page-area">
+          {activeNav === 'Overview' && (
+            <Overview
+              connected={connected || isCustomRoad}
+              roadData={activeRoadData}
+              trafficMetrics={trafficMetrics}
+              fps={fps}
+              onGoToSim={() => setActiveNav('Live Simulation')}
+            />
+          )}
+
+          {activeNav === 'Live Simulation' && (
+            <LiveSimulation
+              connected={connected}
+              isCustomRoad={isCustomRoad}
+              roadData={activeRoadData}
+              agentsRef={activeAgentsRef}
+              lastTickTimeRef={activeLastTickTimeRef}
+              tickIntervalRef={activeTickIntervalRef}
+              selectedAgent={selectedAgent}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={handleSelectAgent}
+              onFocusAgent={handleFitView}
+              trafficMetrics={trafficMetrics}
+              fitViewToken={fitViewToken}
+              onFitView={handleFitView}
+              onSendControl={handleSendControl}
+              onResetNetwork={handleResetCustomRoad}
+              onCountFrame={handleCountFrame}
+              {...commonLayerProps}
+            />
+          )}
+
+          {activeNav === 'Scenario' && (
+            <Scenario onGoToSim={() => setActiveNav('Live Simulation')} />
+          )}
+
+          {activeNav === 'Agents' && (
+            <Agents
+              agentsSnapshot={agentsSnapshot}
+              onSelectAgent={handleSelectAgent}
+            />
+          )}
+
+          {activeNav === 'Map' && (
+            <MapPage
+              roadData={activeRoadData}
+              isCustomRoad={isCustomRoad}
+              onApplyRoadData={handleApplyCustomRoad}
+              onResetRoadData={handleResetCustomRoad}
+            />
+          )}
+
+          {activeNav === 'Telemetry' && (
+            <Telemetry
+              trafficMetrics={trafficMetrics}
+              fps={fps}
+              connected={connected || isCustomRoad}
+            />
+          )}
+
+          {activeNav === 'Calibration' && <Calibration />}
+
+          {activeNav === 'Performance' && (
+            <Performance
+              fps={fps}
+              trafficMetrics={trafficMetrics}
+              connected={connected || isCustomRoad}
+            />
+          )}
+
+          {activeNav === 'Settings' && <Settings {...commonLayerProps} />}
+        </main>
       </div>
-      
-      <SimulationCanvas agentsRef={agentsRef} roadData={roadData} />
-    </>
+    </div>
   );
 }
-
-export default App;
