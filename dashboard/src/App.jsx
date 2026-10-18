@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar.jsx';
 import Topbar from './components/Topbar.jsx';
 import Overview from './pages/Overview.jsx';
@@ -9,7 +9,7 @@ import { CustomRoadSimulator } from './utils/customRoadSimulator.js';
 import './App.css';
 
 export default function App() {
-  const [activeNav, setActiveNav] = useState('Live Simulation');
+  const [activeNav, setActiveNav] = useState('Map');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState(null);
   const [agentsSnapshot, setAgentsSnapshot] = useState([]);
@@ -22,7 +22,7 @@ export default function App() {
   const [showPedestrians, setShowPedestrians] = useState(true);
   const [showVehicles, setShowVehicles] = useState(true);
   const [showRoadBoundaries, setShowRoadBoundaries] = useState(true);
-  const [showObstacles, setShowObstacles] = useState(true);
+  const [showObstacles, setShowObstacles] = useState(false);
 
   const [fps, setFps] = useState(0);
   const [simTime, setSimTime] = useState('00:00:00');
@@ -43,7 +43,11 @@ export default function App() {
   } = useWebSocket();
 
   const isCustomRoad = !!customRoadData;
+
   const activeRoadData = customRoadData || backendRoadData;
+
+  // The simulator runs on custom-uploaded road data only
+  const simRoadData = customRoadData || null;
 
   // Custom road traffic simulator refs
   const customAgentsRef = useRef([]);
@@ -51,14 +55,14 @@ export default function App() {
   const customTickIntervalRef = useRef(20);
   const simulatorRef = useRef(null);
 
-  // Initialize and run custom road simulator when custom road is active
+  // Initialize and run custom road simulator whenever simRoadData is available
   useEffect(() => {
-    if (!isCustomRoad || !customRoadData) {
+    if (!simRoadData) {
       simulatorRef.current = null;
       return;
     }
 
-    const sim = new CustomRoadSimulator(customRoadData, { agentCount: 180, speedMultiplier: 1.0 });
+    const sim = new CustomRoadSimulator(simRoadData, { agentCount: 180, speedMultiplier: 1.0 });
     simulatorRef.current = sim;
     customAgentsRef.current = sim.getAgents();
 
@@ -82,12 +86,13 @@ export default function App() {
       running = false;
       cancelAnimationFrame(af);
     };
-  }, [isCustomRoad, customRoadData]);
+  }, [simRoadData]);
 
-  // Active agents ref based on mode
-  const activeAgentsRef = isCustomRoad ? customAgentsRef : backendAgentsRef;
-  const activeLastTickTimeRef = isCustomRoad ? customLastTickTimeRef : backendLastTickTimeRef;
-  const activeTickIntervalRef = isCustomRoad ? customTickIntervalRef : backendTickIntervalRef;
+  // Active agents ref: use local simulator whenever backend is not live
+  const useLocalSim = !!simRoadData;
+  const activeAgentsRef = useLocalSim ? customAgentsRef : backendAgentsRef;
+  const activeLastTickTimeRef = useLocalSim ? customLastTickTimeRef : backendLastTickTimeRef;
+  const activeTickIntervalRef = useLocalSim ? customTickIntervalRef : backendTickIntervalRef;
 
   const framesRef = useRef(0);
 
@@ -202,13 +207,7 @@ export default function App() {
       />
 
       <div className="main-panel">
-        <Topbar
-          connected={connected || isCustomRoad}
-          roadData={activeRoadData}
-          fps={fps}
-          agentCount={trafficMetrics.total}
-          simTime={simTime}
-        />
+        <Topbar connected={connected || isCustomRoad} roadData={activeRoadData} fps={fps} agentCount={trafficMetrics.total} simTime={simTime} onNavigate={handleNav} />
 
         <main className="page-area">
           {activeNav === 'Overview' && (
@@ -239,6 +238,7 @@ export default function App() {
               onSendControl={handleSendControl}
               onResetNetwork={handleResetCustomRoad}
               onCountFrame={handleCountFrame}
+              onNavigateToMap={() => setActiveNav('Map')}
               {...commonLayerProps}
             />
           )}
@@ -257,3 +257,4 @@ export default function App() {
     </div>
   );
 }
+

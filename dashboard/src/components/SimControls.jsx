@@ -1,9 +1,11 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function SimControls({
   connected,
   isCustomRoad,
   activeAgentCount = 180,
+  potholesEnabled = false,
+  onTogglePotholes,
   onSendControl,
   onFitView,
   onResetNetwork,
@@ -12,9 +14,13 @@ export default function SimControls({
   const [idmT, setIdmT] = useState(1.2);
   const [speedMult, setSpeedMult] = useState(1.0);
   const [barricades, setBarricades] = useState(false);
-  const [potholes, setPotholes] = useState(false);
+  const [potholes, setPotholes] = useState(Boolean(potholesEnabled));
   const [dirty, setDirty] = useState(false);
   const [appliedFeedback, setAppliedFeedback] = useState(false);
+
+  useEffect(() => {
+    setPotholes(Boolean(potholesEnabled));
+  }, [potholesEnabled]);
 
   // Sync with active count when connected and not actively dirty
   useEffect(() => {
@@ -43,141 +49,10 @@ export default function SimControls({
     setTimeout(() => setAppliedFeedback(false), 2500);
   };
 
-  // 1-Click Quick Presets
-  const applyPreset = (preset) => {
-    if (preset === 'freeflow') {
-      const target = isCustomRoad ? 120 : 90;
-      setAgentCount(target);
-      setIdmT(0.8);
-      setSpeedMult(1.3);
-      setBarricades(false);
-      setPotholes(false);
-      handleApply({
-        num_agents: target,
-        idm_T: 0.8,
-        speed_multiplier: 1.3,
-        barricades_enabled: false,
-        potholes_enabled: false,
-      });
-    } else if (preset === 'balanced') {
-      const target = isCustomRoad ? 200 : 160;
-      setAgentCount(target);
-      setIdmT(1.2);
-      setSpeedMult(1.0);
-      setBarricades(false);
-      setPotholes(true);
-      handleApply({
-        num_agents: target,
-        idm_T: 1.2,
-        speed_multiplier: 1.0,
-        barricades_enabled: false,
-        potholes_enabled: true,
-      });
-    } else if (preset === 'congested') {
-      const target = isCustomRoad ? 350 : 280;
-      setAgentCount(target);
-      setIdmT(1.8);
-      setSpeedMult(0.8);
-      setBarricades(true);
-      setPotholes(true);
-      handleApply({
-        num_agents: target,
-        idm_T: 1.8,
-        speed_multiplier: 0.8,
-        barricades_enabled: true,
-        potholes_enabled: true,
-      });
-    } else if (preset === 'unjam') {
-      const target = isCustomRoad ? 150 : 100;
-      setAgentCount(target);
-      setIdmT(0.8);
-      setSpeedMult(1.2);
-      setBarricades(false);
-      setPotholes(false);
-      handleApply({
-        num_agents: target,
-        idm_T: 0.8,
-        speed_multiplier: 1.2,
-        barricades_enabled: false,
-        potholes_enabled: false,
-        reset: true,
-      });
-    }
-  };
-
   const isEnabled = isCustomRoad || connected;
 
   return (
     <div className="sim-controls">
-      {/* Simulation Mode Badge */}
-      <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-dim)' }}>
-          Target Engine
-        </span>
-        <span
-          className="font-mono"
-          style={{
-            fontSize: '11px',
-            padding: '2px 8px',
-            borderRadius: '4px',
-            background: isCustomRoad ? 'rgba(56, 189, 248, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-            color: isCustomRoad ? 'var(--accent-cyan)' : 'var(--accent-green)',
-            border: `1px solid ${isCustomRoad ? 'rgba(56, 189, 248, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`,
-          }}
-        >
-          {isCustomRoad ? 'Custom Road Network' : 'C++ Engine (Port 9001)'}
-        </span>
-      </div>
-
-      {/* 1-Click Tuning Presets */}
-      <div style={{ marginBottom: '14px' }}>
-        <label className="ctrl-label" style={{ marginBottom: '6px' }}>
-          <span>Flow Presets</span>
-        </label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-          <button
-            type="button"
-            className="ctrl-btn ghost"
-            style={{ padding: '6px 8px', fontSize: '11px', textAlign: 'center' }}
-            onClick={() => applyPreset('freeflow')}
-            disabled={!isEnabled}
-            title="Free flowing traffic (low headway, no barricades)"
-          >
-            🟢 Free Flow
-          </button>
-          <button
-            type="button"
-            className="ctrl-btn ghost"
-            style={{ padding: '6px 8px', fontSize: '11px', textAlign: 'center' }}
-            onClick={() => applyPreset('balanced')}
-            disabled={!isEnabled}
-            title="Balanced urban traffic"
-          >
-            🟡 Balanced
-          </button>
-          <button
-            type="button"
-            className="ctrl-btn ghost"
-            style={{ padding: '6px 8px', fontSize: '11px', textAlign: 'center' }}
-            onClick={() => applyPreset('congested')}
-            disabled={!isEnabled}
-            title="Dense rush hour with barricades"
-          >
-            🔴 Rush Hour
-          </button>
-          <button
-            type="button"
-            className="ctrl-btn primary"
-            style={{ padding: '6px 8px', fontSize: '11px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.2)', borderColor: 'var(--accent-red)' }}
-            onClick={() => applyPreset('unjam')}
-            disabled={!isEnabled}
-            title="Break gridlocks and immediately unjam motionless vehicles"
-          >
-            ⚡ Unjam Flow
-          </button>
-        </div>
-      </div>
-
       <div className="ctrl-group">
         {/* Agent Count Slider */}
         <div className="ctrl-row">
@@ -266,8 +141,12 @@ export default function SimControls({
               type="checkbox"
               checked={potholes}
               onChange={(e) => {
-                setPotholes(e.target.checked);
-                mark();
+                const checked = e.target.checked;
+                setPotholes(checked);
+                if (onTogglePotholes) {
+                  onTogglePotholes(checked);
+                }
+                onSendControl?.({ potholes_enabled: checked });
               }}
               disabled={!isEnabled}
             />
@@ -297,21 +176,9 @@ export default function SimControls({
         </button>
       </div>
 
-      {/* Return to Live C++ Backend button if in Custom Road Mode */}
-      {isCustomRoad && onResetNetwork && (
-        <button
-          type="button"
-          className="ctrl-btn ghost"
-          onClick={onResetNetwork}
-          style={{ marginTop: '8px', width: '100%', fontSize: '11px', color: 'var(--text-muted)' }}
-        >
-          Revert to C++ Backend Stream
-        </button>
-      )}
-
       {!isEnabled && (
         <div className="ctrl-offline-note">
-          Backend offline — controls inactive
+          Backend offline - controls inactive
         </div>
       )}
     </div>

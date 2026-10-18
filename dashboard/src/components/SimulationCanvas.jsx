@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { AGENT_TYPE_COLORS, AGENT_DIMENSIONS } from '../utils/constants.js';
@@ -68,10 +68,15 @@ function buildRoadNetwork(roadData, options = {}) {
   if (!roadData) return group;
   const { showRoadBoundaries = true, showObstacles = true } = options;
 
-  const roadMat = new THREE.MeshStandardMaterial({ color: '#131D26', roughness: 0.90, metalness: 0.10 });
-  const curbMat = new THREE.LineBasicMaterial({ color: '#334E68', transparent: true, opacity: 0.9 });
-  const centerDashedMat = new THREE.LineDashedMaterial({ color: '#627D98', dashSize: 3, gapSize: 2 });
-  const junctionMat = new THREE.MeshStandardMaterial({ color: '#101720', roughness: 0.92, metalness: 0.08 });
+  const roadMat = new THREE.MeshStandardMaterial({
+    color: '#0D1013',
+    roughness: 0.92,
+    metalness: 0.05,
+    side: THREE.DoubleSide,
+  });
+  const curbMat = new THREE.LineBasicMaterial({ color: '#FFFFFF', transparent: false });
+  const curbStripMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF', side: THREE.DoubleSide });
+  const centerDashedMat = new THREE.LineDashedMaterial({ color: '#FFFFFF', dashSize: 4.5, gapSize: 3.5 });
 
   if (showRoadBoundaries && Array.isArray(roadData.edges)) {
     roadData.edges.forEach((edge) => {
@@ -80,6 +85,7 @@ function buildRoadNetwork(roadData, options = {}) {
       const halfW = (edge.width || 30) / 2;
 
       const vertices = [];
+      const curbVertices = [];
       const leftEdgePts = [];
       const rightEdgePts = [];
       const centerPts = [];
@@ -117,8 +123,28 @@ function buildRoadNetwork(roadData, options = {}) {
           const nlx = nxPtX + nnx * halfW, nlz = nxPtY + nny * halfW;
           const nrx = nxPtX - nnx * halfW, nrz = nxPtY - nny * halfW;
 
+          // Road asphalt quad
           vertices.push(lx, 0.01, lz, rx, 0.01, rz, nlx, 0.01, nlz);
           vertices.push(rx, 0.01, rz, nrx, 0.01, nrz, nlx, 0.01, nlz);
+
+          // Outer solid white border ribbons (like reference)
+          const bw = 0.5;
+          curbVertices.push(
+            lx, 0.018, lz,
+            lx - nx * bw, 0.018, lz - ny * bw,
+            nlx, 0.018, nlz,
+            lx - nx * bw, 0.018, lz - ny * bw,
+            nlx - nnx * bw, 0.018, nlz - nny * bw,
+            nlx, 0.018, nlz
+          );
+          curbVertices.push(
+            rx, 0.018, rz,
+            rx + nx * bw, 0.018, rz + ny * bw,
+            nrx, 0.018, nrz,
+            rx + nx * bw, 0.018, rz + ny * bw,
+            nrx + nnx * bw, 0.018, nrz + nny * bw,
+            nrx, 0.018, nrz
+          );
         }
       }
 
@@ -127,6 +153,13 @@ function buildRoadNetwork(roadData, options = {}) {
         ribbonGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
         ribbonGeo.computeVertexNormals();
         group.add(new THREE.Mesh(ribbonGeo, roadMat));
+
+        if (curbVertices.length > 0) {
+          const curbGeo = new THREE.BufferGeometry();
+          curbGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(curbVertices), 3));
+          curbGeo.computeVertexNormals();
+          group.add(new THREE.Mesh(curbGeo, curbStripMat));
+        }
 
         group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(leftEdgePts), curbMat));
         group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rightEdgePts), curbMat));
@@ -138,44 +171,53 @@ function buildRoadNetwork(roadData, options = {}) {
     });
   }
 
-  if (Array.isArray(roadData.junctions)) {
-    roadData.junctions.forEach((junc) => {
-      if (!Array.isArray(junc.shape) || junc.shape.length < 3) return;
-      const shape = new THREE.Shape();
-      junc.shape.forEach(([x, y], idx) => { idx === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y); });
-      const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), junctionMat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.y = 0.012;
-      group.add(mesh);
-    });
-  }
-
   if (showObstacles) {
-    const potholeMat = new THREE.MeshStandardMaterial({ color: '#5A3D1E', roughness: 0.98, metalness: 0.0, transparent: true, opacity: 0.9 });
-    const potholeRimMat = new THREE.LineBasicMaterial({ color: '#7C5228', transparent: true, opacity: 0.8 });
-    (roadData.potholes || []).forEach((p) => {
+    const potholeList = (Array.isArray(roadData.potholes) && roadData.potholes.length > 0)
+      ? [...roadData.potholes]
+      : [];
+
+    // If roadData does not provide potholes, generate realistic hazard potholes along corridor edges
+    if (potholeList.length === 0 && Array.isArray(roadData.edges)) {
+      roadData.edges.forEach((edge, eIdx) => {
+        if (!Array.isArray(edge.centerline) || edge.centerline.length < 2) return;
+        const pts = edge.centerline;
+        for (let i = 0; i < pts.length - 1; i += 2) {
+          const [x0, y0] = pts[i];
+          const [x1, y1] = pts[i + 1];
+          const mx = (x0 + x1) / 2 + (eIdx % 2 === 0 ? 3 : -3);
+          const my = (y0 + y1) / 2 + (eIdx % 2 === 0 ? -2 : 2);
+          potholeList.push({
+            center: [mx, my],
+            radius: 1.8 + (i % 3) * 0.4,
+          });
+        }
+      });
+    }
+
+    const potholeMat = new THREE.MeshStandardMaterial({
+      color: '#151C24',
+      roughness: 0.98,
+      metalness: 0.05,
+    });
+    const potholeRimMat = new THREE.LineBasicMaterial({
+      color: '#B45309',
+      transparent: true,
+      opacity: 0.85,
+    });
+
+    potholeList.forEach((p) => {
       if (!Array.isArray(p.center) || !p.radius) return;
       const r = p.radius;
-      const m = new THREE.Mesh(new THREE.CircleGeometry(r, 20), potholeMat);
+      const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), potholeMat);
       m.rotation.x = -Math.PI / 2;
-      m.position.set(p.center[0], 0.025, p.center[1]);
+      m.position.set(p.center[0], 0.024, p.center[1]);
       group.add(m);
+
       const rimPts = [];
-      for (let a = 0; a <= Math.PI * 2 + 0.1; a += Math.PI / 10) {
+      for (let a = 0; a <= Math.PI * 2 + 0.1; a += Math.PI / 12) {
         rimPts.push(new THREE.Vector3(p.center[0] + Math.cos(a) * r, 0.026, p.center[1] + Math.sin(a) * r));
       }
       group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rimPts), potholeRimMat));
-    });
-
-    const barricadeMat = new THREE.MeshStandardMaterial({ color: '#DC2626', roughness: 0.45, metalness: 0.2 });
-    (roadData.barricades || []).forEach((b) => {
-      if (!Array.isArray(b.hull) || b.hull.length < 3) return;
-      const shape = new THREE.Shape();
-      b.hull.forEach(([x, y], idx) => { idx === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y); });
-      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.85, bevelEnabled: true, bevelSegments: 1, steps: 1, bevelSize: 0.05, bevelThickness: 0.05 }), barricadeMat);
-      m.rotation.x = -Math.PI / 2;
-      m.position.y = 0.02;
-      group.add(m);
     });
   }
 
@@ -214,6 +256,9 @@ export default function SimulationCanvas({
   const showVehiclesRef = useRef(showVehicles);
   const showRoadBoundariesRef = useRef(showRoadBoundaries);
   const showObstaclesRef = useRef(showObstacles);
+  const agentsRefProp = useRef(agentsRef);
+  const lastTickTimeRefProp = useRef(lastTickTimeRef);
+  const tickIntervalRefProp = useRef(tickIntervalRef);
 
   roadDataRef.current = roadData;
   onSelectAgentRef.current = onSelectAgent;
@@ -223,6 +268,9 @@ export default function SimulationCanvas({
   showVehiclesRef.current = showVehicles;
   showRoadBoundariesRef.current = showRoadBoundaries;
   showObstaclesRef.current = showObstacles;
+  agentsRefProp.current = agentsRef;
+  lastTickTimeRefProp.current = lastTickTimeRef;
+  tickIntervalRefProp.current = tickIntervalRef;
 
   // Stable refs for camera/controls
   const cameraRef = useRef(null);
@@ -235,14 +283,14 @@ export default function SimulationCanvas({
     const mount = mountRef.current;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#070B10');
-    scene.fog = new THREE.FogExp2('#070B10', 0.001);
+    scene.background = new THREE.Color('#82B286');
+    scene.fog = new THREE.FogExp2('#82B286', 0.0005);
 
     const camera = new THREE.PerspectiveCamera(46, 1, 0.5, 3000);
     camera.position.set(0, 80, 100);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = false;
@@ -260,18 +308,18 @@ export default function SimulationCanvas({
     controlsRef.current = controls;
 
     // Lighting
-    scene.add(new THREE.AmbientLight('#A8C0D8', 1.2));
-    const sun = new THREE.DirectionalLight('#FFFFFF', 1.35);
+    scene.add(new THREE.AmbientLight('#FFFFFF', 1.25));
+    const sun = new THREE.DirectionalLight('#FFFFFF', 1.2);
     sun.position.set(80, 140, 60);
     scene.add(sun);
-    const fill = new THREE.DirectionalLight('#3A5C80', 0.5);
+    const fill = new THREE.DirectionalLight('#D8EED8', 0.4);
     fill.position.set(-60, 40, -40);
     scene.add(fill);
 
     // Ground plane
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(5000, 5000),
-      new THREE.MeshStandardMaterial({ color: '#090E14', roughness: 0.99, metalness: 0.01 })
+      new THREE.PlaneGeometry(6000, 6000),
+      new THREE.MeshStandardMaterial({ color: '#82B286', roughness: 0.95, metalness: 0.0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0.0;
@@ -296,10 +344,11 @@ export default function SimulationCanvas({
         roughness: t === 4 ? 0.8 : 0.32,
         metalness: t === 4 ? 0.0 : 0.22,
         emissive: color,
-        emissiveIntensity: 0.06,
+        emissiveIntensity: 0.32,
       });
       const mesh = new THREE.InstancedMesh(geometry, material, MAX_AGENTS_PER_TYPE);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.frustumCulled = false;
       mesh.count = 0;
       mesh.userData.agentType = t;
       typeMeshes[t] = mesh;
@@ -314,7 +363,7 @@ export default function SimulationCanvas({
     const hlMat = new THREE.MeshBasicMaterial({ color: '#38BDF8', side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
     const highlight = new THREE.Mesh(hlGeo, hlMat);
     highlight.rotation.x = -Math.PI / 2;
-    highlight.position.y = 0.25;
+    highlight.position.y = 0.35;
     highlight.visible = false;
     highlightRef.current = highlight;
     scene.add(highlight);
@@ -366,13 +415,14 @@ export default function SimulationCanvas({
       controls.update();
       onCountFrameRef.current?.();
 
-      const agents = agentsRef.current || [];
+      const currentAgentsRef = agentsRefProp.current;
+      const agents = currentAgentsRef?.current || [];
       const meshes = instanceMeshesRef.current;
       const indexMap = agentIndexMapRef.current;
 
       const now = performance.now();
-      const lastTick = lastTickTimeRef?.current ?? now;
-      const tickInterval = Math.max(tickIntervalRef?.current ?? 20, 10);
+      const lastTick = lastTickTimeRefProp.current?.current ?? now;
+      const tickInterval = Math.max(tickIntervalRefProp.current?.current ?? 20, 10);
       const alpha = Math.min(Math.max((now - lastTick) / tickInterval, 0), 1);
 
       // Reset counts
@@ -406,7 +456,7 @@ export default function SimulationCanvas({
         const heading = (agent.prevHeading ?? agent.heading) + diff * alpha;
         const rotY = Math.PI / 2 - heading;
 
-        dummy.position.set(posX, 0.04, posY);
+        dummy.position.set(posX, 0.25, posY);
         dummy.rotation.set(0, rotY, 0);
         dummy.scale.set(w, h, l);
         dummy.updateMatrix();
@@ -502,3 +552,11 @@ export default function SimulationCanvas({
 
   return <div ref={mountRef} className="simulation-canvas" />;
 }
+
+
+
+
+
+
+
+

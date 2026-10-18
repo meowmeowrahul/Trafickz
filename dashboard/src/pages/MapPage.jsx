@@ -10,10 +10,10 @@ function MapCanvas({ roadData }) {
     if (!mountRef.current) return;
     const mount = mountRef.current;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#080D12');
+    scene.background = new THREE.Color('#82B286');
 
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 3000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const camera = new THREE.PerspectiveCamera(45, 1, 1.0, 2500);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     mount.appendChild(renderer.domElement);
 
@@ -21,25 +21,25 @@ function MapCanvas({ roadData }) {
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI / 2 - 0.05;
 
-    scene.add(new THREE.AmbientLight('#C0D8F0', 1.3));
-    const sun = new THREE.DirectionalLight('#FFFFFF', 1.0);
+    scene.add(new THREE.AmbientLight('#FFFFFF', 1.2));
+    const sun = new THREE.DirectionalLight('#FFFFFF', 1.2);
     sun.position.set(50, 100, 50);
     scene.add(sun);
 
     // Ground plane
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(3000, 3000),
-      new THREE.MeshStandardMaterial({ color: '#0A121A', roughness: 1.0 })
+      new THREE.MeshStandardMaterial({ color: '#82B286', roughness: 0.95 })
     );
     ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.05;
     scene.add(ground);
 
     const roadGroup = new THREE.Group();
     scene.add(roadGroup);
 
-    const roadMat = new THREE.MeshStandardMaterial({ color: '#182430', roughness: 0.9 });
-    const curbMat = new THREE.LineBasicMaterial({ color: '#38BDF8', opacity: 0.85, transparent: true });
-    const juncMat = new THREE.MeshStandardMaterial({ color: '#14202B', roughness: 0.95 });
+    const roadMat = new THREE.MeshBasicMaterial({ color: '#0D1013', side: THREE.DoubleSide });
+    const curbMat = new THREE.LineBasicMaterial({ color: '#FFFFFF', opacity: 1.0 });
 
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
 
@@ -47,7 +47,7 @@ function MapCanvas({ roadData }) {
       roadData.edges.forEach((edge) => {
         if (!Array.isArray(edge.centerline) || edge.centerline.length < 2) return;
         const pts = edge.centerline;
-        const roadW = Math.max(Number(edge.width) || 12, 4);
+        const roadW = Math.max(Number(edge.width) || 30, 12);
         const hw = roadW / 2;
         const vertices = [];
 
@@ -93,21 +93,7 @@ function MapCanvas({ roadData }) {
       });
     }
 
-    // Junctions
-    if (roadData && Array.isArray(roadData.junctions)) {
-      roadData.junctions.forEach((junc) => {
-        if (!Array.isArray(junc.shape) || junc.shape.length < 3) return;
-        const shape = new THREE.Shape();
-        junc.shape.forEach(([x, y], idx) => {
-          idx === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y);
-        });
-        const geo = new THREE.ShapeGeometry(shape);
-        const mesh = new THREE.Mesh(geo, juncMat);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.y = 0.012;
-        roadGroup.add(mesh);
-      });
-    }
+
 
     // Camera auto-framing
     if (isFinite(minX)) {
@@ -195,7 +181,7 @@ export default function MapPage({ roadData, isCustomRoad, onApplyRoadData, onRes
       {isCustomRoad && (
         <div className="info-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <strong>Active Viewport Network:</strong> Custom Uploaded Network ({roadData.name || 'Imported Road Network'} – {edges.length} segments, {junctions.length} junctions).
+            <strong>Active Viewport Network:</strong> Custom Uploaded Network ({roadData.name || 'Imported Road Network'} â€“ {edges.length} segments, {junctions.length} junctions).
           </div>
           <button type="button" className="ghost-btn" onClick={onResetRoadData} style={{ padding: '3px 8px', fontSize: '10px' }}>
             Revert to Live C++ Backend
@@ -286,3 +272,7 @@ export default function MapPage({ roadData, isCustomRoad, onApplyRoadData, onRes
     </div>
   );
 }
+
+
+
+
