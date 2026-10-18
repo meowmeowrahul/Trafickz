@@ -508,9 +508,11 @@ button {
 }
 
 .sim-right-rail.collapsed {
-  width: 38px;
-  padding: 8px 6px;
-  overflow: hidden;
+  width: 0;
+  padding: 0;
+  background-color: transparent;
+  border-left: none;
+  overflow: visible;
 }
 
 .right-rail-toggle {
@@ -534,6 +536,13 @@ button {
   background: #E8F5EC;
   border-color: #82C995;
   color: #1A4D2E;
+}
+
+.sim-right-rail.collapsed .right-rail-toggle {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  margin: 0;
 }
 
 /* â”€â”€ Generic Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -1354,5 +1363,4 @@ button {
   overflow: hidden;
   border: 1px solid #E5E7EB;
 }
-
 
