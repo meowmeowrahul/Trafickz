@@ -8,7 +8,6 @@ export default function SimControls({
   onTogglePotholes,
   onSendControl,
   onFitView,
-  onResetNetwork,
 }) {
   const [agentCount, setAgentCount] = useState(activeAgentCount || 180);
   const [idmT, setIdmT] = useState(1.2);
@@ -176,11 +175,6 @@ export default function SimControls({
         </button>
       </div>
 
-      {!isEnabled && (
-        <div className="ctrl-offline-note">
-          Backend offline - controls inactive
-        </div>
-      )}
     </div>
   );
 }

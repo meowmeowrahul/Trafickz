@@ -283,8 +283,8 @@ export default function SimulationCanvas({
     const mount = mountRef.current;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#82B286');
-    scene.fog = new THREE.FogExp2('#82B286', 0.0005);
+    scene.background = new THREE.Color('#000000');
+    scene.fog = new THREE.FogExp2('#000000', 0.0005);
 
     const camera = new THREE.PerspectiveCamera(46, 1, 0.5, 3000);
     camera.position.set(0, 80, 100);
@@ -319,7 +319,7 @@ export default function SimulationCanvas({
     // Ground plane
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000),
-      new THREE.MeshStandardMaterial({ color: '#82B286', roughness: 0.95, metalness: 0.0 })
+      new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.95, metalness: 0.0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = 0.0;
@@ -552,7 +552,6 @@ export default function SimulationCanvas({
 
   return <div ref={mountRef} className="simulation-canvas" />;
 }
-
 
 
 

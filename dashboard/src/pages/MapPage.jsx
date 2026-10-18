@@ -10,7 +10,7 @@ function MapCanvas({ roadData }) {
     if (!mountRef.current) return;
     const mount = mountRef.current;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#82B286');
+    scene.background = new THREE.Color('#000000');
 
     const camera = new THREE.PerspectiveCamera(45, 1, 1.0, 2500);
     const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
@@ -29,7 +29,7 @@ function MapCanvas({ roadData }) {
     // Ground plane
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(3000, 3000),
-      new THREE.MeshStandardMaterial({ color: '#82B286', roughness: 0.95 })
+      new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.95 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
@@ -138,7 +138,7 @@ function MapCanvas({ roadData }) {
   return <div ref={mountRef} className="map-canvas-container" />;
 }
 
-export default function MapPage({ roadData, isCustomRoad, onApplyRoadData, onResetRoadData }) {
+export default function MapPage({ roadData, isCustomRoad, onApplyRoadData }) {
   const [modalOpen, setModalOpen] = useState(false);
   const edges = roadData?.edges || [];
   const junctions = roadData?.junctions || [];
@@ -152,30 +152,6 @@ export default function MapPage({ roadData, isCustomRoad, onApplyRoadData, onRes
           <p className="page-eyebrow">Spatial Infrastructure</p>
           <h2 className="page-title">Road Network & Topology</h2>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {isCustomRoad && (
-            <button
-              type="button"
-              className="ctrl-btn ghost"
-              onClick={onResetRoadData}
-              title="Switch back to live C++ backend corridor network"
-            >
-              Reset to Backend Live Network
-            </button>
-          )}
-          <button
-            type="button"
-            className="ctrl-btn primary"
-            onClick={() => setModalOpen(true)}
-            id="add-road-network-btn"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Add Road Network
-          </button>
-        </div>
       </div>
 
       {isCustomRoad && (
@@ -183,9 +159,6 @@ export default function MapPage({ roadData, isCustomRoad, onApplyRoadData, onRes
           <div>
             <strong>Active Viewport Network:</strong> Custom Uploaded Network ({roadData.name || 'Imported Road Network'} â€“ {edges.length} segments, {junctions.length} junctions).
           </div>
-          <button type="button" className="ghost-btn" onClick={onResetRoadData} style={{ padding: '3px 8px', fontSize: '10px' }}>
-            Revert to Live C++ Backend
-          </button>
         </div>
       )}
 
@@ -272,7 +245,3 @@ export default function MapPage({ roadData, isCustomRoad, onApplyRoadData, onRes
     </div>
   );
 }
-
-
-
-

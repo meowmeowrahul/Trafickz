@@ -1,7 +1,7 @@
+import { useState } from 'react';
 import SimulationCanvas from '../components/SimulationCanvas.jsx';
 import AgentInspector from '../components/AgentInspector.jsx';
 import SimControls from '../components/SimControls.jsx';
-import { AGENT_TYPE_LABELS, AGENT_TYPE_COLORS } from '../utils/constants.js';
 
 export default function LiveSimulation({
   connected,
@@ -26,11 +26,10 @@ export default function LiveSimulation({
   fitViewToken,
   onFitView,
   onSendControl,
-  onResetNetwork,
   onCountFrame,
   onNavigateToMap,
 }) {
-  const density = trafficMetrics.density || 'Waiting';
+  const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
   const hasRoadData = !!roadData;
 
   return (
@@ -129,52 +128,24 @@ export default function LiveSimulation({
       </div>
 
       {/* Right Rail Panels */}
-      <aside className="sim-right-rail">
-        {/* Real-time Traffic Overview */}
-        <section className="panel">
-          <div className="panel-hdr compact">
-            <span className="panel-eyebrow">Real-time Stream</span>
-            <h3>Corridor Telemetry</h3>
-          </div>
-          <div className="metric-stack">
-            <div className="mrow">
-              <span>Active Agents</span>
-              <strong className="font-mono">{trafficMetrics.total || 0}</strong>
-            </div>
-            <div className="mrow">
-              <span>Average Speed</span>
-              <strong className="font-mono">
-                {trafficMetrics.avgSpeed != null ? `${trafficMetrics.avgSpeed.toFixed(1)} m/s` : '—'}
-              </strong>
-            </div>
-            <div className="mrow">
-              <span>Density Rating</span>
-              <strong className={`density-tag ${density.toLowerCase()}`}>
-                {density}
-              </strong>
-            </div>
-          </div>
-
-          <div className="legend-list">
-            {Object.entries(AGENT_TYPE_LABELS).map(([type, label]) => (
-              <div key={type} className="legend-item">
-                <span className="legend-dot" style={{ background: AGENT_TYPE_COLORS[type] }} />
-                <span>{label}</span>
-                <strong className="font-mono">{trafficMetrics.byType?.[type] ?? 0}</strong>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Selected Agent Inspector */}
-        <section className="panel">
-          <div className="panel-hdr compact">
-            <span className="panel-eyebrow">Agent Telemetry</span>
-            <h3>Inspector</h3>
-          </div>
-          <AgentInspector agent={selectedAgent} onFocusAgent={onFocusAgent} />
-        </section>
-
+      <aside className={`sim-right-rail ${rightRailCollapsed ? 'collapsed' : ''}`}>
+        <button
+          type="button"
+          className="right-rail-toggle"
+          onClick={() => setRightRailCollapsed((collapsed) => !collapsed)}
+          title={rightRailCollapsed ? 'Expand right menu' : 'Collapse right menu'}
+          aria-label={rightRailCollapsed ? 'Expand right menu' : 'Collapse right menu'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            {rightRailCollapsed ? (
+              <polyline points="15 18 9 12 15 6"></polyline>
+            ) : (
+              <polyline points="9 18 15 12 9 6"></polyline>
+            )}
+          </svg>
+        </button>
+        {!rightRailCollapsed && (
+          <>
         {/* Simulation Controls (connected to C++ backend or Custom Simulator) */}
         <section className="panel">
           <div className="panel-hdr compact">
@@ -189,8 +160,16 @@ export default function LiveSimulation({
             onTogglePotholes={setShowObstacles}
             onSendControl={onSendControl}
             onFitView={onFitView}
-            onResetNetwork={onResetNetwork}
           />
+        </section>
+
+        {/* Selected Agent Inspector */}
+        <section className="panel">
+          <div className="panel-hdr compact">
+            <span className="panel-eyebrow">Agent Telemetry</span>
+            <h3>Inspector</h3>
+          </div>
+          <AgentInspector agent={selectedAgent} onFocusAgent={onFocusAgent} />
         </section>
 
         {/* Display Layers */}
@@ -234,6 +213,8 @@ export default function LiveSimulation({
             </label>
           </div>
         </section>
+          </>
+        )}
       </aside>
     </div>
   );
