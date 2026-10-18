@@ -38,14 +38,11 @@ export default function Sidebar({ active, onNav, collapsed, onToggle }) {
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="brand-block">
         <div className="brand-mark">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#16A34A"/>
-            <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round"/>
-          </svg>
+          <img src="/trafickz-logo.png" alt="मार्गerita logo" />
         </div>
         {!collapsed && (
           <div className="brand-titles">
-            <div className="brand-name">TRAFICKZ</div>
+            <div className="brand-name">मार्गerita</div>
             <div className="brand-subtitle">Digital Twin</div>
           </div>
         )}

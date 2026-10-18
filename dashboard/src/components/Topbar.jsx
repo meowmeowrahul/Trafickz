@@ -3,7 +3,7 @@ export default function Topbar({ onNavigate }) {
     <header className="topbar">
       <div className="topbar-left">
         <div className="topbar-brand">
-          <span className="topbar-brand-name">TRAFICKZ</span>
+          <span className="topbar-brand-name">मार्गerita</span>
         </div>
       </div>
 

@@ -262,9 +262,15 @@ export default function AddRoadModal({ isOpen, onClose, onApplyRoadData }) {
     setFileState('processing');
     setErrorMessage('');
     try {
-      const res = await fetch('/sample_road_network.json');
-      if (!res.ok) throw new Error('Could not fetch sample road network.');
+      const sampleUrl = `${import.meta.env.BASE_URL}sample_road_network.json`;
+      const res = await fetch(sampleUrl);
+      if (!res.ok) {
+        throw new Error(`Could not fetch sample road network (${res.status}).`);
+      }
       const data = await res.json();
+      if (!Array.isArray(data.edges) || data.edges.length === 0) {
+        throw new Error('Sample road network is missing valid road segments.');
+      }
       setFileInfo({
         name: 'Delhi Arterial Corridor (Ring Road South)',
         size: '2.8 KB',
@@ -276,7 +282,9 @@ export default function AddRoadModal({ isOpen, onClose, onApplyRoadData }) {
       setParsedData(data);
       setFileState('success');
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to load sample network.');
+      setErrorMessage(err instanceof TypeError
+        ? 'Could not reach the sample road network. Make sure the dashboard is running through Vite or its deployed web server.'
+        : (err.message || 'Failed to load sample network.'));
       setFileState('error');
     }
   };

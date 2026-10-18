@@ -10,7 +10,7 @@ function MapCanvas({ roadData }) {
     if (!mountRef.current) return;
     const mount = mountRef.current;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#000000');
+    scene.background = new THREE.Color('#171A1F');
 
     const camera = new THREE.PerspectiveCamera(45, 1, 1.0, 2500);
     const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
@@ -29,7 +29,7 @@ function MapCanvas({ roadData }) {
     // Ground plane
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(3000, 3000),
-      new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.95 })
+      new THREE.MeshStandardMaterial({ color: '#20242A', roughness: 0.95 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
@@ -38,7 +38,7 @@ function MapCanvas({ roadData }) {
     const roadGroup = new THREE.Group();
     scene.add(roadGroup);
 
-    const roadMat = new THREE.MeshBasicMaterial({ color: '#0D1013', side: THREE.DoubleSide });
+    const roadMat = new THREE.MeshBasicMaterial({ color: '#2B3036', side: THREE.DoubleSide });
     const curbMat = new THREE.LineBasicMaterial({ color: '#FFFFFF', opacity: 1.0 });
 
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
