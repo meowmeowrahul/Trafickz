@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import SimulationCanvas from '../components/SimulationCanvas.jsx';
+import SimulationCanvas2D from '../components/SimulationCanvas2D.jsx';
 import AgentInspector from '../components/AgentInspector.jsx';
 import SimControls from '../components/SimControls.jsx';
 
@@ -30,6 +31,7 @@ export default function LiveSimulation({
   onNavigateToMap,
 }) {
   const [rightRailCollapsed, setRightRailCollapsed] = useState(false);
+  const [renderMode, setRenderMode] = useState('3d');
   const hasRoadData = !!roadData;
 
   return (
@@ -71,20 +73,37 @@ export default function LiveSimulation({
         </div>
 
         {hasRoadData ? (
-          <SimulationCanvas
-            agentsRef={agentsRef}
-            lastTickTimeRef={lastTickTimeRef}
-            tickIntervalRef={tickIntervalRef}
-            roadData={roadData}
-            selectedAgentId={selectedAgentId}
-            onSelectAgent={onSelectAgent}
-            showPedestrians={showPedestrians}
-            showVehicles={showVehicles}
-            showRoadBoundaries={showRoadBoundaries}
-            showObstacles={showObstacles}
-            fitViewKey={fitViewToken}
-            onCountFrame={onCountFrame}
-          />
+          renderMode === '3d' ? (
+            <SimulationCanvas
+              agentsRef={agentsRef}
+              lastTickTimeRef={lastTickTimeRef}
+              tickIntervalRef={tickIntervalRef}
+              roadData={roadData}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={onSelectAgent}
+              showPedestrians={showPedestrians}
+              showVehicles={showVehicles}
+              showRoadBoundaries={showRoadBoundaries}
+              showObstacles={showObstacles}
+              fitViewKey={fitViewToken}
+              onCountFrame={onCountFrame}
+            />
+          ) : (
+            <SimulationCanvas2D
+              agentsRef={agentsRef}
+              lastTickTimeRef={lastTickTimeRef}
+              tickIntervalRef={tickIntervalRef}
+              roadData={roadData}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={onSelectAgent}
+              showPedestrians={showPedestrians}
+              showVehicles={showVehicles}
+              showRoadBoundaries={showRoadBoundaries}
+              showObstacles={showObstacles}
+              fitViewKey={fitViewToken}
+              onCountFrame={onCountFrame}
+            />
+          )
         ) : (
           <div className="sim-empty-state">
             <div className="sim-empty-inner">
@@ -213,6 +232,51 @@ export default function LiveSimulation({
             </label>
           </div>
         </section>
+
+        {/* Render Mode Toggle */}
+        <div style={{ padding: '12px 16px' }}>
+          <button
+            type="button"
+            onClick={() => setRenderMode(renderMode === '3d' ? '2d' : '3d')}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '10px 16px',
+              background: renderMode === '3d' ? 'var(--accent-green, #3EA055)' : '#38BDF8',
+              border: 'none',
+              borderRadius: '8px',
+              color: '#FFFFFF',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {renderMode === '3d' ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="3" y1="12" x2="21" y2="12"></line>
+                  <line x1="12" y1="3" x2="12" y2="21"></line>
+                </svg>
+                <span>Change to 2D</span>
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+                <span>Change to 3D</span>
+              </>
+            )}
+          </button>
+        </div>
           </>
         )}
       </aside>
