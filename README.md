@@ -1,241 +1,315 @@
-# Trafickz
+# मार्गerita
 
-Trafickz is an interactive digital twin for heterogeneous Indian traffic. It combines a real-time C++ traffic simulation engine with a React/Three.js dashboard, an OpenStreetMap-to-SUMO map preparation pipeline, and offline calibration utilities. The system is designed to make traffic behavior visible and tunable while retaining a headless mode for repeatable experiments and trajectory validation.
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
+[![Three.js](https://img.shields.io/badge/Three.js-r186-black.svg)](https://threejs.org/)
+[![License](https://img.shields.io/badge/license-Unlicensed-lightgrey.svg)](LICENSE)
 
-The repository contains two runtime paths:
+**Margherita** (stylized as **मार्गerita**, combining the Sanskrit/Hindi word *मार्ग* for path/road with *erita*) is an interactive, high-performance digital twin and microscopic traffic simulation engine specifically designed for **heterogeneous, lane-less Indian traffic**. 
 
-1. **Live engine path** - the C++ engine loads a SUMO `.net.xml` road network, simulates agents at a configurable time step, and streams the road network and agent states over WebSocket.
-2. **Custom-road browser path** - the dashboard can load a compatible JSON or GeoJSON file locally and run its lightweight JavaScript road-following simulator without replacing the C++ engine's map.
+It pairs an ultra-fast, multi-threaded C++20 simulation core with a modern React dashboard supporting both **3D WebGL (Three.js)** and **2D Canvas** rendering, OpenStreetMap-to-SUMO network ingestion, Gumbel-based stochastic routing, and offline genetic algorithm (GA) acceleration calibration.
 
-The dashboard is therefore useful both as a live client for the C++ engine and as a self-contained visualizer for uploaded road networks.
+![Margherita System Architecture](images/system-architecture.png)
 
-## What the project provides
+---
 
-- Heterogeneous agents: two-wheelers, auto-rickshaws, cars, buses, pedestrians, bicycles, trucks, and medium vehicles.
-- A C++20 simulation loop with configurable IDM longitudinal behavior, social-force-style lateral behavior, tactical state transitions, spatial-hash neighbor queries, polygon/circle collision checks, road obstacles, and route selection.
-- SUMO network XML parsing and conversion into an internal road graph.
-- WebSocket streaming at 50 Hz by default:
-  - one JSON `road_network` message on connection;
-  - compact binary frames containing each agent's ID, type, position, heading, and speed.
-- Runtime controls for agent count, IDM time headway, SFM acceleration, barricades, and potholes.
-- A Three.js dashboard with Overview, Live Simulation, and Map pages, agent inspection, camera fitting, display layers, and custom road import.
-- An offline OSM extraction pipeline using OSMnx and SUMO `netconvert`.
-- Headless output for flow, gaps, deadlocks, congestion failures, and per-agent speed/acceleration trajectories.
-- GoogleTest coverage for vector math, hull construction, spatial hashing, SAT collision checks, tactical transitions, route generation, and pothole response.
+## Visual Showcase
 
-## Architecture
+| 3D Digital Twin Viewport | Top-Down 2D Canvas View |
+|:---:|:---:|
+| ![3D Traffic View](images/3d-traffic-ss.png) | ![2D View](images/2d-view.png) |
+| *Real-time Three.js 3D rendering with dynamic shadows and camera orbit* | *Lightweight HTML5 2D canvas with pan/zoom and agent telemetry inspection* |
+
+| Tactical Squeeze & Overtaking | Junction Negotiation & Continuous Centerlines |
+|:---:|:---:|
+| ![Overtaking Mechanism](images/overtaking-mechanism.png) | ![Traffic at Junction](images/traffic-at-junction.png) |
+| *Width-scaled lateral force, gap evaluation, and dynamic lateral offsets* | *Internal junction connector edges (`is_internal`) preventing off-road drift* |
+
+| Digital Twin Overview & Fleet Metrics | Interactive Network Map & Upload |
+|:---:|:---:|
+| ![Overview Dashboard](images/overview-dashboard.png) | ![Map Page](images/map-dashbaord.png) |
+| *Real-time density, modal split, and corridor velocity diagnostics* | *OSM network inspection, corridor inventory, and custom GeoJSON upload* |
+
+---
+
+## Key Features
+
+* **Heterogeneous Vehicle Fleet:** Explicit physical profiles, max speeds, acceleration limits, and 2D collision hulls for 8 distinct Indian traffic modes:
+  * Two-wheelers (motorcycles/scooters)
+  * Auto-rickshaws (3-wheelers with tapered front wedges)
+  * Passenger cars
+  * Transit buses
+  * Pedestrians
+  * Bicycles
+  * Heavy commercial trucks
+  * Medium commercial vehicles
+* **Non-Lane-Based Physics & Tactics:**
+  * **Intelligent Driver Model (IDM):** Longitudinal car-following adapted for lateral overlap ratios ($\omega$).
+  * **Social Force Model (SFM):** Continuous lateral repulsive forces and asymmetric opposing-traffic clearance.
+  * **Tactical Squeeze Maneuvers:** Proactive gap evaluation, lateral width-scaled nudge forces, offset tracking, and duration timers.
+  * **Low-Speed Dry Steering:** Standstill and near-zero speed heading adjustment (`< 0.1 m/s`), preventing gridlock freezing.
+  * **Collision Resolution:** Separating Axis Theorem (SAT) convex polygon solver for vehicles and barricades, with circle-polygon tests for pedestrians.
+* **SUMO & OpenStreetMap Ingestion:**
+  * Direct ingestion of SUMO `.net.xml` networks with multi-lane shapes, junctions, and internal transition connections.
+  * Continuous junction centerlines (`is_internal = true`) with hard boundary snapping.
+* **Stochastic Routing (Phase 9):**
+  * Gumbel-distributed link cost perturbations with configurable logit scale $\theta$ (`route_logit_theta`).
+  * Deterministic state-based PRNG seeding `(agent_id, start_seg, end_seg)` and pre-computed noise allocation to preserve the Independence of Irrelevant Alternatives (IIA).
+  * Density penalty weight $\lambda$ (`route_density_lambda`) for dynamic diversion away from congestion.
+* **Dual-Mode Dashboard:**
+  * **3D WebGL:** Built with Three.js instanced rendering, vehicle body geometries, and orbit controls.
+  * **2D Canvas:** Built with HTML5 Canvas, smooth interpolation, pan/zoom, and one-click toggle button.
+  * **Browser Custom-Road Simulator:** Standalone browser-local traffic simulator for instant preview of uploaded JSON/GeoJSON corridors.
+* **Headless Calibration & Validation:**
+  * Multi-objective Genetic Algorithm (GA) calibration directly fitting real-world trajectory datasets (speed Dynamic Time Warping, tangential acceleration MSE, lateral acceleration MSE).
+  * 1 Hz trajectory export and 10 Hz headway timeseries reporting.
+
+---
+
+## Architecture Overview
 
 ```text
-OSM address/query
-       |
-       v
-map_pipeline/extract_map.py ---> SUMO network.net.xml
-       |                                |
-       |                                v
-       +------------------------> C++ traffic_sim
-                                         |
-                              uWebSockets on port 9001
-                                         |
-                                         v
-                              React/Vite + Three.js dashboard
-
-Uploaded road_network.json / GeoJSON ---> browser CustomRoadSimulator
+OpenStreetMap Query / Bounding Box
+              │
+              ▼
+   indian-traffic-sim/map_pipeline/extract_map.py
+              │
+              ▼
+       SUMO network.net.xml
+              │
+              ▼
+       C++ traffic_sim Engine (port 9001)
+        ├── NetXmlParser & RoadGraph (Junctions, Internal Edges, Connections)
+        ├── SpatialHash Broad-Phase & SAT Narrow-Phase Collision Solver
+        ├── IDM Longitudinal + SFM Lateral + Tactical Squeeze FSM
+        └── WebSocket Server (uWebSockets binary stream at 50 Hz)
+              │
+              ▼
+       WebSocket Binary Stream (21 bytes / agent)
+              │
+              ▼
+       React 19 + Vite Dashboard (dashboard/)
+        ├── 3D View: SimulationCanvas (Three.js WebGL)
+        ├── 2D View: SimulationCanvas2D (HTML5 Canvas)
+        ├── Telemetry Inspector & Real-time Fleet Metrics
+        └── Custom Road Simulator (client-side path following)
 ```
 
-### C++ simulation engine
+### Dual Dashboard Structure
+The repository contains two dashboards:
+1. **[`dashboard/`](./dashboard)**: The primary, full-featured digital twin application with Three.js 3D, HTML5 2D, Overview, Live Simulation, Map management, and custom road uploads.
+2. **[`indian-traffic-sim/dashboard/`](./indian-traffic-sim/dashboard)**: A standalone, lightweight 2D canvas prototype with direct engine sliders (including `sfm_A`).
 
-The executable is `traffic_sim`. At startup it:
-
-1. Loads `SimConfig` from JSON and applies command-line overrides.
-2. Parses `net_xml_path` into a `NetMap`.
-3. Builds a `RoadGraph` from network edges and junction connections.
-4. Loads configured obstacles or generates random obstacles in interactive mode.
-5. Serializes the road graph and obstacle inventory as the initial WebSocket message.
-6. Creates agents on the graph, or schedules agents from a calibration schedule.
-7. Repeats the simulation tick at `dt`, broadcasting state frames in interactive mode.
-
-Each tick applies pending controls, updates the spatial hash, finds capped nearest neighbors, advances physics, resolves collisions, removes completed agents, and swaps the read/write state buffers. Interactive ticks target the configured `dt` and warn when the step exceeds `max_step_ms`.
-
-### Dashboard
-
-The Vite application in [`dashboard/`](./dashboard) uses React 19 and Three.js. `useWebSocket` owns the connection and decodes the binary stream. `App.jsx` selects the active data source:
-
-- backend road data and backend agent frames when no custom network is loaded;
-- a browser-local `CustomRoadSimulator` when a custom network is active.
-
-The dashboard computes display metrics once per second, while the Three.js canvas interpolates between incoming agent frames for smoother rendering. Custom networks are not uploaded to the C++ server; they remain in browser state until the page is refreshed.
+---
 
 ## Prerequisites
 
-### Engine
-
-- CMake 3.20 or newer.
-- A C++20 compiler with OpenMP support.
-- Git, because CMake FetchContent obtains pugixml, GoogleTest, nlohmann/json, uSockets, and uWebSockets.
-- A network connection during the first CMake configure if those dependencies are not already cached.
+### C++ Simulation Engine
+* **OS:** Linux (Ubuntu 20.04+ recommended) or Windows (via CMake + MSVC)
+* **Compiler:** C++20 compliant compiler (`gcc-11+`, `clang-13+`, or MSVC 2019+)
+* **Build System:** CMake 3.20+ and Make/Ninja
+* **Libraries:** OpenMP, pthread
+* *Note:* pugixml, GoogleTest, nlohmann_json, uSockets, and uWebSockets are automatically fetched and compiled via CMake `FetchContent`.
 
 ### Dashboard
+* **Node.js:** v18.0.0 or newer
+* **Package Manager:** npm or yarn
+* **Browser:** Modern Chromium, Firefox, or WebKit browser with WebGL enabled
 
-- Node.js and npm.
-- A browser with WebGL support for the Three.js views.
+### Map Pipeline & Calibration
+* **Python:** 3.10+
+* **Packages:** Requirements listed in [`indian-traffic-sim/map_pipeline/requirements.txt`](./indian-traffic-sim/map_pipeline/requirements.txt) (OSMnx, shapely, geopandas, etc.)
+* **SUMO:** `netconvert` binary installed and available on system `PATH`
+* **Scientific Python:** `pandas`, `numpy`, `scipy`, `fastdtw` for GA calibration
 
-### Map pipeline and calibration
+---
 
-- Python 3.
-- Python packages listed in [`indian-traffic-sim/map_pipeline/requirements.txt`](./indian-traffic-sim/map_pipeline/requirements.txt). The calibration scripts additionally use pandas, NumPy, SciPy, fastdtw, and related scientific packages.
-- SUMO's `netconvert` executable on `PATH` for OSM conversion.
-- The calibration scripts expect external trajectory CSV files at the paths defined in each script; update those paths for a different machine.
+## Quick Start Guide
 
-## Quick start
+### 1. Build and Test the C++ Engine
 
-### 1. Build and test the engine
-
-From `indian-traffic-sim/`, the supplied shell script configures CMake, builds, and runs CTest:
+From the repository root on Linux:
 
 ```bash
+cd indian-traffic-sim
 ./build.sh
 ```
 
-On Windows, run the equivalent commands from a Developer PowerShell or use CMake directly:
+Or configure and compile manually with CMake:
 
-```powershell
-cmake -S engine -B engine/build
-cmake --build engine/build --config Release
-ctest --test-dir engine/build -C Release --output-on-failure
+```bash
+cd indian-traffic-sim
+cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release
+cmake --build engine/build -j $(nproc)
+
+# Run unit test suite
+cd engine/build
+ctest --output-on-failure
 ```
 
-The first configure may download the CMake FetchContent dependencies.
+*(On Windows, run `cmake -S engine -B engine/build` followed by `cmake --build engine/build --config Release`)*.
 
-### 2. Start the engine
+### 2. Start the Simulation Engine
 
-The engine's default configuration is `indian-traffic-sim/config/config.default.json`. The default WebSocket port is `9001`.
+Run the engine with the default configuration (`config.default.json`) on WebSocket port `9001`:
 
-```powershell
-.\engine\build\Release\traffic_sim.exe .\config\config.default.json
+```bash
+cd indian-traffic-sim
+./engine/build/traffic_sim config/config.default.json
 ```
 
-The exact binary location depends on the generator. If using a single-configuration generator, it may be `engine/build/traffic_sim`.
+To run headlessly for trajectory generation or validation:
 
-The engine resolves paths as supplied. Prefer absolute `net_xml_path` and `obstacles_json_path` values when launching from a different working directory. The map extraction script writes an absolute network path into the default configuration.
+```bash
+./engine/build/traffic_sim config/config.default.json --headless --duration 60 --num_agents 200
+```
 
-### 3. Start the dashboard
+### 3. Launch the Dashboard
 
-```powershell
+In a new terminal window:
+
+```bash
 cd dashboard
 npm install
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal. The dashboard attempts to connect to `ws://localhost:9001`. Start the engine first to see its network and live agents.
+Open your browser at the Vite local URL (typically `http://localhost:5173`). 
+* The dashboard automatically connects to `ws://localhost:9001`.
+* Switch between **3D WebGL** and **2D Top-Down** rendering at any time using the green **Change to 2D** / **Change to 3D** button in the lower-right panel.
 
-Useful dashboard commands:
+---
 
-```powershell
-npm run lint
-npm run build
-npm run preview
+## Map Extraction & Switching
+
+Extract any real-world corridor from OpenStreetMap into a SUMO network:
+
+```bash
+cd indian-traffic-sim
+./change_map.sh "Connaught Place, New Delhi, India" 500
 ```
 
-### 4. Use a custom road network
+This activates the Python virtual environment, queries OSMnx, generates the `.net.xml` geometry with `netconvert`, and automatically updates `config/config.default.json`.
 
-Open **Map > Import & Upload**, choose a compatible JSON/GeoJSON file, inspect its preview, and apply it. The custom simulator starts in the browser with 180 agents. Its controls affect only the browser simulation; they do not mutate the C++ engine.
+---
 
-The included [`sample_road_network.json`](./dashboard/public/sample_road_network.json) is a working example.
+## Engine Command-Line Options
 
-## Engine command-line options
+The `traffic_sim` executable accepts an optional configuration path followed by CLI overrides:
 
-The executable accepts a positional configuration path and these options:
+| Flag | Argument | Description |
+|---|---|---|
+| `[config_path]` | File path | Path to JSON config (defaults to `../config/config.default.json` relative to execution). |
+| `--headless` | *None* | Disables WebSocket server and GUI broadcast; runs headless to completion. |
+| `--duration` | `<seconds>` | Simulated time cutoff for headless mode before printing metrics JSON to stdout. |
+| `--num_agents` | `<int>` | Overrides baseline free-running fleet population. |
+| `--idm_T` | `<seconds>` | Overrides IDM time headway parameter. |
+| `--idm_s0` | `<meters>` | Overrides IDM minimum jam distance. |
+| `--sfm_A` | `<float>` | Overrides Social Force repulsive magnitude. |
+| `--sfm_B` | `<float>` | Overrides Social Force interaction range. |
+| `--comf_decel` | `<m/s²>` | Overrides comfortable deceleration limit. |
+| `--car_width` | `<meters>` | Overrides passenger car profile width. |
+| `--car_length` | `<meters>` | Overrides passenger car profile length. |
+| `--schedule` | `<path>` | Path to scheduled spawn events JSON for trajectory benchmarking. |
+| `--net_xml` | `<path>` | Overrides SUMO `.net.xml` file path (pass `""` for schedule test track). |
 
-| Option | Meaning |
-|---|---|
-| `--headless` | Disable WebSocket output and run for metrics/output instead. |
-| `--duration <seconds>` | Stop headless execution after this simulated duration. |
-| `--num_agents <count>` | Override the initial/free-running agent count. |
-| `--idm_T <seconds>` | Override IDM time headway. |
-| `--idm_s0 <meters>` | Override minimum IDM gap. |
-| `--sfm_A <value>` | Override social-force acceleration. |
-| `--sfm_B <value>` | Override social-force interaction range parameter. |
-| `--comf_decel <value>` | Override comfortable deceleration. |
-| `--car_width <meters>` | Override the car profile width. |
-| `--car_length <meters>` | Override the car profile length. |
-| `--schedule <path>` | Load a timed spawn schedule for trajectory experiments. |
-| `--net_xml <path>` | Override the network XML path; an empty value is useful for schedule-based test corridors. |
+---
 
-Example headless run:
+## Road & Obstacle Data Structure
 
-```powershell
-.\engine\build\Release\traffic_sim.exe .\config\config.default.json --headless --duration 60 --num_agents 200
-```
-
-## Road and obstacle data
-
-The C++ engine consumes SUMO network XML. The dashboard consumes the normalized JSON shape below:
+The engine broadcasts road geometry and obstacles as an initial JSON message, which the dashboard also uses for custom uploads:
 
 ```json
 {
   "type": "road_network",
-  "name": "Example corridor",
+  "name": "Barakhamba Road Corridor",
   "edges": [
     {
-      "id": "edge_1",
-      "width": 12,
-      "centerline": [[0, 0], [100, 0]]
+      "id": "edge_north_0",
+      "width": 14.5,
+      "centerline": [[0.0, 0.0], [120.0, 35.0]]
     }
   ],
-  "junctions": [],
-  "barricades": [],
+  "junctions": [
+    {
+      "id": "junc_cp_center",
+      "position": [120.0, 35.0],
+      "shape": [[115.0, 30.0], [125.0, 30.0], [125.0, 40.0], [115.0, 40.0]]
+    }
+  ],
+  "barricades": [
+    {
+      "id": "barricade_construction_1",
+      "hull": [[40.0, 10.0], [45.0, 10.0], [45.0, 12.0], [40.0, 12.0]]
+    }
+  ],
   "potholes": [
-    { "id": "p1", "center": [40, 1], "radius": 2, "severity": 0.5 }
+    {
+      "id": "pothole_monsoon_3",
+      "center": [65.0, 18.0],
+      "radius": 1.8,
+      "severity": 0.65
+    }
   ]
 }
 ```
 
-`centerline` coordinates are `[x, y]` world-plane coordinates in meters. `width` is the road width used for rendering and browser agent offsets. GeoJSON `FeatureCollection` uploads are converted in the browser to edges using each feature's coordinates and optional `properties.width`.
+---
 
-## Configuration and simulation model
+## Repository Layout
 
-Important defaults include `dt = 0.02` seconds, `target_fps = 50`, `num_agents = 200`, `K_neighbors = 16`, `grid_cell_size = 10`, and `max_step_ms = 12`. IDM parameters control longitudinal following. SFM parameters control lateral/social response. FSM parameters govern yielding, squeezing, and turning transitions. `vehicle_distribution` stores eight type weights in the enum order documented in [`API.md`](./API.md).
+```text
+TruTraffic/
+├── API.md                                # WebSocket wire protocol and CLI specification
+├── DOCUMENTATION.md                      # Complete system design and physics documentation
+├── README.md                             # Project overview and quick start guide
+├── change_map.sh -> indian-traffic-sim/  # Root convenience wrapper
+├── images/                               # System diagrams and simulation screenshots
+├── dashboard/                            # Primary React 19 + Three.js + 2D Canvas Web App
+│   ├── src/components/                   # SimulationCanvas (3D), SimulationCanvas2D, Inspector
+│   ├── src/pages/                        # Overview, LiveSimulation, MapPage
+│   └── src/utils/                        # CustomRoadSimulator, Constants, Vehicle Geometries
+├── docs/                                 # Architectural Decision Records (ADRs)
+└── indian-traffic-sim/                   # Core C++ simulation engine & pipelines
+    ├── build.sh                          # Engine build and test script
+    ├── change_map.sh                     # OSM map extraction runner
+    ├── config/                           # Default runtime JSON configuration and schema
+    ├── engine/                           # C++20 engine source code
+    │   ├── src/core/                     # Engine loop, Agent state, SpatialHash, SimConfig
+    │   ├── src/physics/                  # IDM, SFM, Dry Steering, Boundary Constraints
+    │   ├── src/tactics/                  # Tactical FSM (Squeeze, Gap Evaluation)
+    │   ├── src/collision/                # SAT polygon & Circle-Polygon intersection solvers
+    │   ├── src/network/                  # RoadGraph, Internal edges, uWebSockets server
+    │   └── src/parser/                   # NetXmlParser (SUMO network parser)
+    ├── map_pipeline/                     # OSMnx extraction & SUMO netconvert toolchain
+    └── scripts/                          # Fleet distribution & GA calibration toolchain
+        └── calibrate/                    # parse_ground_truth.py, ga_optimizer.py, validate_del4.py
+```
 
-The configuration loader is permissive: missing files or malformed JSON produce a diagnostic and fall back to compiled defaults. The JSON schema is useful documentation, but it does not currently enumerate every field loaded by `SimConfig`; consult [`DOCUMENTATION.md`](./DOCUMENTATION.md) for the complete runtime field list.
+---
 
-## Headless experiments and calibration
+## Calibration & Empirical Validation
 
-Headless mode prints a final JSON object to stdout:
+To calibrate IDM and SFM parameters against empirical vehicle trajectories:
 
-- free simulation: `flow`, `avg_gap`, `gaps_timeseries`, `deadlocked_percent`, and `deadlocked_count`;
-- scheduled simulation: `congestion_failures` and `trajectories`, with per-agent `speed`, `tan_acc`, and `lat_acc` arrays sampled at 1 Hz.
+1. **Parse Ground Truth Dataset:**
+   ```bash
+   cd indian-traffic-sim
+   python scripts/calibrate/parse_ground_truth.py ../dataset/DEL_4.csv
+   ```
+2. **Execute Multi-Objective Genetic Algorithm (GA):**
+   ```bash
+   python scripts/calibrate/ga_optimizer.py
+   ```
+3. **Validate Convergence:**
+   ```bash
+   python scripts/calibrate/validate_del4.py
+   ```
 
-The calibration workflow is:
+*Historical validation result:* 65 trajectory comparisons, 1 congestion failure, average Dynamic Time Warping (DTW) distance of `11.9657`, tangential acceleration MSE of `4.0153`, lateral acceleration MSE of `0.1764`, and weighted loss of `12.2153`.
 
-1. `scripts/calibrate/parse_ground_truth.py` converts a trajectory CSV into `inflow_schedule.json`, `target_trajectories.json`, and vehicle metrics.
-2. `scripts/calibrate/ga_optimizer.py` runs differential evolution over IDM/SFM parameters and writes `optimized_params.json`.
-3. `scripts/calibrate/validate_del4.py` runs a validation schedule and writes `validation_results.txt`.
+---
 
-The checked-in validation result records 65 comparisons, one congestion failure, average DTW of 11.9657, tangential acceleration MSE of 4.0153, lateral acceleration MSE of 0.1764, and weighted loss of 12.2153. These are historical project results, not a guarantee for every map or machine.
+## License
 
-## Repository layout
-
-| Path | Responsibility |
-|---|---|
-| [`dashboard/`](./dashboard) | React/Vite/Three.js user interface and browser custom-road simulator. |
-| [`indian-traffic-sim/engine/`](./indian-traffic-sim/engine) | C++20 engine, WebSocket server, parser, graph, physics, collision, obstacles, and tests. |
-| [`indian-traffic-sim/config/`](./indian-traffic-sim/config) | Default runtime configuration and partial JSON schema. |
-| [`indian-traffic-sim/map_pipeline/`](./indian-traffic-sim/map_pipeline) | OSM extraction and map preparation utilities. |
-| [`indian-traffic-sim/scripts/`](./indian-traffic-sim/scripts) | Distribution analysis and trajectory calibration/validation. |
-| [`docs/DECISIONS.md`](./docs/DECISIONS.md) | Recorded architectural and parameter decisions. |
-| [`DOCUMENTATION.md`](./DOCUMENTATION.md) | Detailed system and implementation documentation. |
-| [`API.md`](./API.md) | WebSocket protocol, file contracts, CLI, and headless output reference. |
-
-## Current limitations
-
-- There is no HTTP REST API, authentication layer, persistence service, or multi-user session service.
-- WebSocket messages use native little-endian binary layout and do not include a protocol version or timestamp.
-- The C++ server broadcasts road geometry once per connection and then broadcasts agent frames; it does not send JSON telemetry for the dashboard metrics.
-- Custom uploads are browser-local and use a simplified path-following simulator rather than the full C++ physics stack.
-- Raw OSM/XML uploads are intentionally rejected by the dashboard; convert them offline first.
-- Some scripts contain machine-specific absolute dataset paths and should be parameterized before reuse.
-- The `router` and several source directories contain stubs for future phases; route selection currently lives in `RoadGraph`.
-
-## License and project status
-
-No license file is currently present in the repository. Add an appropriate license before distributing the project. The engine identifies itself as version 1.5 / Phase 1 while the dashboard footer identifies version 0.1.0; treat both as implementation labels rather than a formal release contract.
+This project is currently unlicensed for open-source distribution. All rights are reserved by the authors. Add an appropriate license prior to public redistribution.

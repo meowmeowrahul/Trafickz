@@ -247,3 +247,5 @@
 2026/11/20 20:28:34 Starting LSP for python using binary /home/rahul/.local/share/contextshrinker/node_modules/.bin/pyright-langserver
 2026/11/20 20:28:39 Workspace ingestion completed.
 2026/11/20 20:28:39 File watcher running.
+2026/11/20 21:10:33 Dynamically watching directory: /home/rahul/TruTraffic/screenshots
+2026/11/20 21:18:00 Dynamically watching directory: /home/rahul/TruTraffic/images
