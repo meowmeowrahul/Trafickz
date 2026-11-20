@@ -3,3 +3,6 @@ PRD - Indian Traffic Simulation Engine (v1.5).pdf
 sumo-copy.pdf
 sumo_tree.txt
 manager-instructions.md
+
+.cache/
+.contextshrinker/
